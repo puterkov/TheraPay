@@ -493,7 +493,7 @@
                 <div class="card"><div class="card-title">מטופלים פעילים</div><div class="card-value" id="statActivePatients">0</div></div>
                 <div class="card"><div class="card-title">פגישות החודש</div><div class="card-value" id="statThisMonthApps">0</div></div>
                 <div class="card"><div class="card-title">פגישות חודש שעבר</div><div class="card-value" id="statLastMonthApps">0</div></div>
-                <div class="card"><div class="card-title">סה"כ נגבה</div><div class="card-value" style="color:var(--success)" id="statMonthRevenue">₪0</div></div>
+                <div class="card"><div class="card-title">סה"כ נגבה (כולל מע"מ)</div><div class="card-value" style="color:var(--success)" id="statMonthRevenue">₪0</div></div>
                 <div class="card"><div class="card-title">חובות פתוחים</div><div class="card-value" style="color:var(--danger)" id="statPendingPayments">₪0</div></div>
             </div>
 
@@ -524,7 +524,7 @@
             <div class="table-container">
                 <table>
                     <thead>
-                        <tr><th>מזהה</th><th>שם מלא</th><th>טלפון</th><th>תעריף</th><th>סטטוס</th><th>פעולות</th></tr>
+                        <tr><th>מזהה</th><th>שם מלא</th><th>טלפון</th><th>תעריף (כולל מע"מ)</th><th>סטטוס</th><th>פעולות</th></tr>
                     </thead>
                     <tbody id="patientsTable"></tbody>
                 </table>
@@ -550,7 +550,7 @@
             <div class="table-container">
                 <table>
                     <thead>
-                        <tr><th>תאריך</th><th>שם המטופל</th><th>סכום</th><th>סטטוס תשלום</th><th>אמצעי תשלום</th><th>פעולות</th></tr>
+                        <tr><th>תאריך</th><th>שם המטופל</th><th>סכום (כולל מע"מ)</th><th>סטטוס תשלום</th><th>אמצעי תשלום</th><th>פעולות</th></tr>
                     </thead>
                     <tbody id="appointmentsTable"></tbody>
                 </table>
@@ -576,7 +576,7 @@
 
             <div class="cards-grid">
                 <div class="card"><div class="card-title">סה"כ חיובים</div><div class="card-value" id="payTotalValue">₪0</div></div>
-                <div class="card"><div class="card-title">סה"כ נגבה</div><div class="card-value" style="color:var(--success)" id="payTotalPaid">₪0</div></div>
+                <div class="card"><div class="card-title">סה"כ נגבה (כולל מע"מ)</div><div class="card-value" style="color:var(--success)" id="payTotalPaid">₪0</div></div>
                 <div class="card"><div class="card-title">יתרת חוב למטופל</div><div class="card-value" style="color:var(--danger)" id="payTotalDebt">₪0</div></div>
             </div>
 
@@ -585,7 +585,7 @@
                 <div class="batch-info" id="batchPaySummary">נבחרו 0 פגישות | סה"כ לתשלום: ₪0</div>
                 <div class="batch-actions">
                     <button class="btn-pay" onclick="openBatchPayModal('APPROVED')">💳 אישור תשלום</button>
-                    <button class="btn-morning" onclick="openBatchPayModal('WITH_RECEIPT')">🧾 הנפק קבלה</button>
+                    <button class="btn-morning" onclick="openBatchPayModal('WITH_RECEIPT')">🧾 הנפק חשבונית מס קבלה</button>
                 </div>
             </div>
 
@@ -596,9 +596,9 @@
                             <th style="width:30px; text-align:center;"><input type="checkbox" id="selectAllPayCheck" checked onchange="toggleAllPayCheckboxes(this)"></th>
                             <th>תאריך</th>
                             <th>שם המטופל</th>
-                            <th>סכום</th>
+                            <th>סכום (כולל מע"מ)</th>
                             <th>סטטוס תשלום</th>
-                            <th>מסמך</th>
+                            <th>מסמך משפטי</th>
                         </tr>
                     </thead>
                     <tbody id="patientPaymentsTable"></tbody>
@@ -644,7 +644,7 @@
         <!-- Morning -->
         <div id="tab-morning" class="tab-section">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
-                <h3 style="font-size:1rem;">🧾 הפקת קבלות ומסמכים (Morning / Green Invoice)</h3>
+                <h3 style="font-size:1rem;">🧾 הנפקת חשבוניות מס קבלה (Morning - עוסק מורשה)</h3>
                 <button class="btn-action" style="font-size:0.82rem; padding:6px 12px; background:#00c853;" onclick="openMorningConfigModal()">⚙️ הגדרת מפתח API</button>
             </div>
 
@@ -665,13 +665,13 @@
 
             <div class="cards-grid">
                 <div class="card"><div class="card-title">סטטוס חיבור API</div><div class="card-value" style="font-size:1.1rem;" id="morningStatusText">נדרשת הגדרה 🔴</div></div>
-                <div class="card"><div class="card-title">ממתינים לקבלה</div><div class="card-value" style="color:var(--warning)" id="morningPendingCount">0</div></div>
+                <div class="card"><div class="card-title">ממתינים לחשבונית מס קבלה</div><div class="card-value" style="color:var(--warning)" id="morningPendingCount">0</div></div>
                 <div class="card"><div class="card-title">מסמכים שהופקו</div><div class="card-value" style="color:var(--success)" id="morningDocsCount">0</div></div>
             </div>
             <div class="table-container">
                 <table>
                     <thead>
-                        <tr><th>תאריך</th><th>שם המטופל</th><th>סכום</th><th>אמצעי תשלום</th><th>סטטוס</th><th>פעולה</th></tr>
+                        <tr><th>תאריך</th><th>שם המטופל</th><th>סכום (כולל מע"מ)</th><th>אמצעי תשלום</th><th>סטטוס מסמך</th><th>פעולה</th></tr>
                     </thead>
                     <tbody id="morningPaymentsTable"></tbody>
                 </table>
@@ -689,7 +689,7 @@
                 </div>
             </div>
             <div class="cards-grid">
-                <div class="card"><div class="card-title">סה"כ הכנסות ששולמו</div><div class="card-value" style="color:var(--success)" id="reportPaidTotal">₪0</div></div>
+                <div class="card"><div class="card-title">סה"כ הכנסות ששולמו (כולל מע"מ)</div><div class="card-value" style="color:var(--success)" id="reportPaidTotal">₪0</div></div>
                 <div class="card"><div class="card-title">סה"כ חוב פתוח</div><div class="card-value" style="color:var(--danger)" id="reportDebtTotal">₪0</div></div>
             </div>
         </div>
@@ -700,7 +700,7 @@
         <div class="modal-content">
             <div class="modal-title">⚙️ הגדרת חיבור ל-Morning (Green Invoice)</div>
             <p style="font-size:0.82rem; color:var(--text-muted); margin-bottom:14px;">
-                כדי להפיק קבלות חוקיות, יש להוציא מפתח API מתוך חשבון ה-Morning שלך (תחת הגדרות מערכת ⬅️ ממשק API):
+                הזן את מפתח ה-API מחשבון ה-Morning שלך (תחת הגדרות מערכת ⬅️ ממשק API). המסמכים יופקו כ**חשבונית מס קבלה** לעוסק מורשה:
             </p>
             <div class="form-group">
                 <label>מפתח API (Key)</label>
@@ -735,11 +735,12 @@
         </div>
     </div>
 
-    <!-- מודאל גבייה מרוכזת -->
+    <!-- מודאל גבייה מרוכזת + הפקת חשבונית מס קבלה מפורטת -->
     <div class="modal" id="batchPayModal">
         <div class="modal-content">
-            <div class="modal-title" id="batchModalTitle">💳 אישור תשלום מרוכז</div>
-            <p id="batchModalDesc" style="font-size:0.88rem; color:var(--accent-teal); margin-bottom:12px; font-weight:600;"></p>
+            <div class="modal-title" id="batchModalTitle">🧾 הנפקת חשבונית מס קבלה מרוכזת</div>
+            <p id="batchModalDesc" style="font-size:0.88rem; color:var(--accent-teal); margin-bottom:8px; font-weight:600;"></p>
+            <div id="batchDatesListNotice" style="font-size:0.8rem; color:var(--text-muted); background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; margin-bottom:14px; border:1px solid var(--border-color);"></div>
             <input type="hidden" id="batchPayMode">
             <div class="form-group">
                 <label>אמצעי תשלום</label>
@@ -751,7 +752,7 @@
                     <option value="צ'ק">צ'ק</option>
                 </select>
             </div>
-            <button class="btn-pay" style="width:100%; margin-bottom:8px;" onclick="executeBatchPayment()">✓ אישור וביצוע גבייה</button>
+            <button class="btn-pay" style="width:100%; margin-bottom:8px;" onclick="executeBatchPayment()">✓ אישור והפקת חשבונית מס קבלה</button>
             <button class="btn-action" style="width:100%; background:var(--border-color);" onclick="document.getElementById('batchPayModal').style.display='none'">ביטול</button>
         </div>
     </div>
@@ -776,7 +777,7 @@
             <input type="hidden" id="editPatId">
             <div class="form-group"><label>שם מלא</label><input type="text" id="patName"></div>
             <div class="form-group"><label>טלפון</label><input type="text" id="patPhone"></div>
-            <div class="form-group"><label>תעריף (₪)</label><input type="number" id="patRate" value="350"></div>
+            <div class="form-group"><label>תעריף כולל מע"מ (₪)</label><input type="number" id="patRate" value="350"></div>
             <button class="btn-action" style="width:100%; margin-bottom:8px;" onclick="savePatient()">שמור מטופל</button>
             <button class="btn-action" style="width:100%; background:var(--border-color);" onclick="document.getElementById('patientModal').style.display='none'">ביטול</button>
         </div>
@@ -792,7 +793,7 @@
                 <select id="appPatient" onchange="autoFillPrice()"></select>
             </div>
             <div class="form-group"><label>תאריך הפגישה</label><input type="date" id="appDate"></div>
-            <div class="form-group"><label>מחיר (₪)</label><input type="number" id="appPrice"></div>
+            <div class="form-group"><label>מחיר כולל מע"מ (₪)</label><input type="number" id="appPrice"></div>
             <div class="form-group">
                 <label>סטטוס תשלום</label>
                 <select id="appStatus">
@@ -886,7 +887,6 @@
             }
         }
 
-        /* 🧾 ניהול מפתחות API של Morning */
         function openMorningConfigModal() {
             document.getElementById('morningApiKeyInput').value = localStorage.getItem('tp_morning_key') || '';
             document.getElementById('morningApiSecretInput').value = localStorage.getItem('tp_morning_secret') || '';
@@ -914,7 +914,7 @@
             const el = document.getElementById('morningStatusText');
             if (el) {
                 if (key && secret) {
-                    el.innerText = 'מחובר 🟢';
+                    el.innerText = 'מחובר 🟢 (עוסק מורשה)';
                     el.style.color = 'var(--success)';
                 } else {
                     el.innerText = 'נדרשת הגדרה 🔴';
@@ -1235,7 +1235,7 @@
                 return `
                     <tr>
                         <td style="text-align:center;">
-                            <input type="checkbox" class="pay-app-check" data-id="${a["מזהה פגישה"]}" data-price="${a["סכום לתשלום"]}" ${isUnpaid ? 'checked' : ''} onchange="updateBatchPaySummary()">
+                            <input type="checkbox" class="pay-app-check" data-id="${a["מזהה פגישה"]}" data-price="${a["סכום לתשלום"]}" data-date="${formatDateForInput(a["תאריך ושעה"]||a["תאריך"])}" ${isUnpaid ? 'checked' : ''} onchange="updateBatchPaySummary()">
                         </td>
                         <td>${formatDateForInput(a["תאריך ושעה"]||a["תאריך"])}</td>
                         <td><b>${a["שם המטופל"]}</b></td>
@@ -1263,7 +1263,7 @@
                 count++;
                 sum += Number(c.getAttribute('data-price')) || 0;
             });
-            document.getElementById('batchPaySummary').innerText = `נבחרו ${count} פגישות | סה"כ לתשלום: ₪${sum}`;
+            document.getElementById('batchPaySummary').innerText = `נבחרו ${count} פגישות | סה"כ כולל מע"מ: ₪${sum}`;
         }
 
         function openBatchPayModal(mode) {
@@ -1272,11 +1272,22 @@
 
             let count = checks.length;
             let sum = 0;
-            checks.forEach(c => sum += Number(c.getAttribute('data-price')) || 0);
+            let datesArr = [];
+            checks.forEach(c => {
+                sum += Number(c.getAttribute('data-price')) || 0;
+                let d = c.getAttribute('data-date');
+                if (d) {
+                    let p = d.split('-');
+                    if (p.length === 3) datesArr.push(`${p[2]}/${p[1]}`);
+                    else datesArr.push(d);
+                }
+            });
 
             document.getElementById('batchPayMode').value = mode;
-            document.getElementById('batchModalTitle').innerText = mode === 'WITH_RECEIPT' ? '🧾 הנפקת קבלה מרוכזת' : '💳 אישור תשלום מרוכז';
-            document.getElementById('batchModalDesc').innerText = `מבצע גבייה עבור ${count} פגישות נבחרות בסך כולל של ₪${sum}`;
+            document.getElementById('batchModalTitle').innerText = mode === 'WITH_RECEIPT' ? '🧾 הנפקת חשבונית מס קבלה מרוכזת' : '💳 אישור תשלום מרוכז';
+            document.getElementById('batchModalDesc').innerText = `גבייה עבור ${count} פגישות בסך כולל מע"מ: ₪${sum}`;
+            
+            document.getElementById('batchDatesListNotice').innerText = `🗓️ פירוט תאריכי טיפולים: ${datesArr.join(', ')}`;
             document.getElementById('batchPayModal').style.display = 'flex';
         }
 
@@ -1296,18 +1307,18 @@
                     app["אמצעי תשלום"] = method;
                     if (mode === 'WITH_RECEIPT') {
                         app["סטטוס תשלום"] = 'שולם';
-                        app.morning_status = `הופק #${docNum}`;
-                        app["מספר חשבונית"] = `הופק #${docNum}`;
+                        app.morning_status = `חשבונית מס קבלה #${docNum}`;
+                        app["מספר חשבונית"] = `חשבונית מס קבלה #${docNum}`;
                     } else {
                         app["סטטוס תשלום"] = 'אישור תשלום';
-                        app.morning_status = '⚠️ נדרש קבלה';
+                        app.morning_status = '⚠️ נדרש חשבונית מס קבלה';
                     }
                 }
             });
 
             saveAndSync();
             document.getElementById('batchPayModal').style.display = 'none';
-            alert(mode === 'WITH_RECEIPT' ? `🟢 הופקה בהצלחה קבלה מרוכזת מס' #${docNum}!` : '🟢 התשלומים אושרו בהצלחה!');
+            alert(mode === 'WITH_RECEIPT' ? `🟢 הופקה בהצלחה חשבונית מס קבלה מס' #${docNum}!` : '🟢 התשלומים אושרו בהצלחה!');
         }
 
         function renderWhatsAppDebtors() {
@@ -1364,7 +1375,7 @@
             const msg = `${patientName} שלום ,
 להלן סיכום הטיפולים בקליניקה לחודש ${monthName} : ${dateList || 'טרם עודכנו תאריכים'}
 סה"כ טיפולים לתשלום: ${count}
-סה"כ : ₪${debt}
+סה"כ לתשלום (כולל מע"מ): ₪${debt}
 
 תודה רבה ויום מקסים! 😊
 יהודית`;
@@ -1389,7 +1400,7 @@
             document.getElementById('morningDocsCount').innerText = issuedList.length;
 
             if (paidApps.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted)">אין תשלומים להפקת קבלה</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted)">אין תשלומים להפקת חשבונית מס קבלה</td></tr>`;
                 return;
             }
 
@@ -1401,9 +1412,9 @@
                         <td><b>${a["שם המטופל"]}</b></td>
                         <td>₪${a["סכום לתשלום"]}</td>
                         <td>${a["אמצעי תשלום"] || 'אשראי/מזומן'}</td>
-                        <td><span class="badge ${hasDoc ? 'badge-success' : 'badge-warning'}">${hasDoc ? a.morning_status : '⚠️ נדרש קבלה'}</span></td>
+                        <td><span class="badge ${hasDoc ? 'badge-success' : 'badge-warning'}">${hasDoc ? a.morning_status : '⚠️ נדרש חשבונית מס קבלה'}</span></td>
                         <td>
-                            ${!hasDoc ? `<button class="btn-morning" onclick="generateMorningDoc('\${a["מזהה פגישה"]}')">🧾 הפק קבלה</button>` : `<span style="color:var(--success)">✓ הופק</span>`}
+                            ${!hasDoc ? `<button class="btn-morning" onclick="generateMorningDoc('\${a["מזהה פגישה"]}')">🧾 הפק חשבונית מס קבלה</button>` : `<span style="color:var(--success)">✓ הופק</span>`}
                         </td>
                     </tr>
                 `;
@@ -1414,11 +1425,11 @@
             const app = db.appointments.find(a => a["מזהה פגישה"] === appId);
             if (app) {
                 const docNum = Math.floor(1000 + Math.random() * 9000);
-                app.morning_status = `הופק #${docNum}`;
-                app["מספר חשבונית"] = `הופק #${docNum}`;
+                app.morning_status = `חשבונית מס קבלה #${docNum}`;
+                app["מספר חשבונית"] = `חשבונית מס קבלה #${docNum}`;
                 app["סטטוס תשלום"] = 'שולם';
                 saveAndSync();
-                alert(`הופקה בהצלחה קבלה מס' ${docNum}!`);
+                alert(`הופקה בהצלחה חשבונית מס קבלה מס' ${docNum}!`);
             }
         }
 
