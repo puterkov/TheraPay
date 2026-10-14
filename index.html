@@ -562,7 +562,7 @@
             <div class="table-container">
                 <table>
                     <thead>
-                        <tr><th>תאריך وشעה</th><th>שם המטופל</th><th>סכום</th><th>אמצעי תשלום</th><th>סטטוס</th><th>פעולה</th></tr>
+                        <tr><th>תאריך ושעה</th><th>שם המטופל</th><th>סכום</th><th>אמצעי תשלום</th><th>סטטוס</th><th>פעולה</th></tr>
                     </thead>
                     <tbody id="morningPaymentsTable"></tbody>
                 </table>
@@ -719,11 +719,43 @@
             }
         }
 
+        // פונקציית עיצוב טלפון למניעת היעלמות 0 מוביל
+        function formatPhoneForDisplay(phone) {
+            if (!phone) return '';
+            let str = String(phone).trim().replace(/[^0-9]/g, '');
+            // אם המספר הוא בן 9 ספרות ולא מתחיל ב-0 (כמו 501234567 שנשמר מ-Sheets), מוסיפים 0 בהתחלה
+            if (str.length === 9 && !str.startsWith('0')) {
+                str = '0' + str;
+            } else if (str.length === 8 && !str.startsWith('0')) {
+                str = '0' + str;
+            }
+            return str;
+        }
+
+        // פונקציית המרה לקישור WhatsApp
+        function formatPhoneForWa(phone) {
+            let str = String(phone).trim().replace(/[^0-9]/g, '');
+            if (str.startsWith('972')) return str;
+            if (str.startsWith('0')) return '972' + str.slice(1);
+            if (str.length === 9 || str.length === 8) return '972' + str;
+            return str;
+        }
+
+        // פונקציית התאמת אזור זמן (Timezone Israel)
         function formatDateForInput(dateStr) {
             if (!dateStr) return new Date().toISOString().split('T')[0];
             let str = String(dateStr).trim();
-            if (str.includes('T')) str = str.split('T')[0];
-            if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+            
+            if (str.includes('T')) {
+                let d = new Date(str);
+                if (!isNaN(d.getTime())) {
+                    let yyyy = d.getFullYear();
+                    let mm = String(d.getMonth() + 1).padStart(2, '0');
+                    let dd = String(d.getDate()).padStart(2, '0');
+                    return `${yyyy}-${mm}-${dd}`;
+                }
+            }
+            if (/^\d{4}-\d{2}-\d{2}\$/.test(str)) return str;
             let parts = str.split(/[\/\.-]/);
             if (parts.length === 3) {
                 if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
@@ -734,8 +766,8 @@
 
         function extractMonthFromDate(dateStr) {
             if (!dateStr) return "";
-            let clean = String(dateStr).split('T')[0];
-            let parts = clean.includes('-') ? clean.split('-') : clean.split('/');
+            let clean = formatDateForInput(dateStr);
+            let parts = clean.split('-');
             if (parts.length >= 2) {
                 let m = parseInt(parts[1]);
                 if (m >= 1 && m <= 12) return String(m).padStart(2, '0');
@@ -747,7 +779,7 @@
             return {
                 "מזהה מטופל": p["מזהה מטופל"] || p["מזהה"] || p["ID"] || "",
                 "שם מלא": p["שם מלא"] || p["שם"] || p["Name"] || "",
-                "טלפון": p["טלפון"] || p["Phone"] || "",
+                "טלפון": formatPhoneForDisplay(p["טלפון"] || p["Phone"] || ""),
                 "תעריף ברירת מחדל": Number(p["תעריף ברירת מחדל"] || p["תעריף"] || p["מחיר"] || 350),
                 "סטטוס": p["סטטוס"] || "פעיל"
             };
@@ -901,7 +933,7 @@
                 <tr>
                     <td>${p["מזהה מטופל"]||''}</td>
                     <td><b>${p["שם מלא"]||''}</b></td>
-                    <td>${p["טלפון"]||''}</td>
+                    <td>${formatPhoneForDisplay(p["טלפון"])}</td>
                     <td>₪${p["תעריף ברירת מחדל"]||0}</td>
                     <td><span class="badge badge-success">${p["סטטוס"]||'פעיל'}</span></td>
                     <td><button class="btn-action" style="font-size:0.75rem; padding:4px 8px; min-height:30px; background:#3b82f6;" onclick="openPatientModal('${p["מזהה מטופל"]}')">✏️ ערוך</button></td>
@@ -918,7 +950,7 @@
                 const isPaid = a["סטטוס תשלום"] === 'שולם' || a["סטטוס תשלום"] === 'אישור תשלום';
                 return `
                     <tr>
-                        <td>${a["תאריך ושעה"]||a["תאריך"]||''}</td>
+                        <td>${formatDateForInput(a["תאריך ושעה"]||a["תאריך"])}</td>
                         <td><b>${a["שם המטופל"]||''}</b></td>
                         <td>₪${a["סכום לתשלום"]||0}</td>
                         <td><span class="badge ${isPaid?'badge-success':'badge-warning'}">${a["סטטוס תשלום"]}</span></td>
@@ -953,7 +985,7 @@
 
             document.getElementById('patientPaymentsTable').innerHTML = filteredApps.map(a => `
                 <tr>
-                    <td>${a["תאריך ושעה"]||a["תאריך"]||''}</td>
+                    <td>${formatDateForInput(a["תאריך ושעה"]||a["תאריך"])}</td>
                     <td><b>${a["שם המטופל"]}</b></td>
                     <td>₪${a["סכום לתשלום"]}</td>
                     <td><span class="badge ${a["סטטוס תשלום"]==='שולם'||a["סטטוס תשלום"]==='אישור תשלום'?'badge-success':'badge-warning'}">${a["סטטוס תשלום"]}</span></td>
@@ -987,24 +1019,23 @@
             }
             document.getElementById('whatsappDebtorsTable').innerHTML = keys.map(k => {
                 const d = debtors[k];
-                return `<tr><td><b>${d.name}</b></td><td>${d.phone}</td><td>${d.count}</td><td><b style="color:var(--danger)">₪${d.debt}</b></td><td><button class="btn-whatsapp" onclick="openWaPreviewModal('${d.name}', '${d.phone}', ${d.count}, ${d.debt})">📲 שלח</button></td></tr>`;
+                const displayPhone = formatPhoneForDisplay(d.phone);
+                return `<tr><td><b>${d.name}</b></td><td>${displayPhone}</td><td>${d.count}</td><td><b style="color:var(--danger)">₪${d.debt}</b></td><td><button class="btn-whatsapp" onclick="openWaPreviewModal('${d.name}', '${d.phone}', ${d.count}, ${d.debt})">📲 שלח</button></td></tr>`;
             }).join('');
         }
 
         function openWaPreviewModal(patientName, phone, count, debt) {
-            const cleanPhone = String(phone).replace(/[^0-9]/g, '');
-            const formattedPhone = cleanPhone.startsWith('0') ? '972' + cleanPhone.slice(1) : cleanPhone;
+            const formattedPhone = formatPhoneForWa(phone);
 
             const monthVal = document.getElementById('waMonthSelect')?.value || "ALL";
             let unpaidApps = filterAppointmentsList(patientName, monthVal).filter(a => a["סטטוס תשלום"] !== 'שולם' && a["סטטוס תשלום"] !== 'אישור תשלום');
 
             const dateList = unpaidApps.map(a => {
-                const dateStr = a["תאריך ושעה"] || a["תאריך"] || '';
-                if (!dateStr) return '';
-                let clean = String(dateStr).split('T')[0];
-                let parts = clean.includes('-') ? clean.split('-') : clean.split('/');
-                if (parts.length === 3) return parts[0].length === 4 ? `${parseInt(parts[2])}.${parseInt(parts[1])}` : `${parseInt(parts[0])}.${parseInt(parts[1])}`;
-                return dateStr;
+                const formatted = formatDateForInput(a["תאריך ושעה"] || a["תאריך"]);
+                if (!formatted) return '';
+                let parts = formatted.split('-');
+                if (parts.length === 3) return `${parseInt(parts[2])}.${parseInt(parts[1])}`;
+                return formatted;
             }).filter(Boolean).join(', ');
 
             const mHebNames = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
@@ -1051,7 +1082,7 @@
                 const hasDoc = a.morning_status && a.morning_status.includes('#');
                 return `
                     <tr>
-                        <td>${a["תאריך ושעה"] || a["תאריך"] || ''}</td>
+                        <td>${formatDateForInput(a["תאריך ושעה"] || a["תאריך"])}</td>
                         <td><b>${a["שם המטופל"]}</b></td>
                         <td>₪${a["סכום לתשלום"]}</td>
                         <td>${a["אמצעי תשלום"] || 'אשראי/מזומן'}</td>
@@ -1106,9 +1137,9 @@
                 const pat = db.patients.find(p => p["מזהה מטופל"] === patId);
                 if (pat) {
                     document.getElementById('editPatId').value = patId;
-                    document.getElementById('patModalTitle').innerText = 'عריכת פרטי מטופל';
+                    document.getElementById('patModalTitle').innerText = 'עריכת פרטי מטופל';
                     document.getElementById('patName').value = pat["שם מלא"] || '';
-                    document.getElementById('patPhone').value = pat["טלפון"] || '';
+                    document.getElementById('patPhone').value = formatPhoneForDisplay(pat["טלפון"]);
                     document.getElementById('patRate').value = pat["תעריף ברירת מחדל"] || 350;
                 }
             } else {
@@ -1126,18 +1157,20 @@
             const name = document.getElementById('patName').value;
             if (!name) return alert('נא להזין שם מטופל');
 
+            const phoneVal = formatPhoneForDisplay(document.getElementById('patPhone').value);
+
             if (editId) {
                 const pat = db.patients.find(p => p["מזהה מטופל"] === editId);
                 if (pat) {
                     pat["שם מלא"] = name;
-                    pat["טלפון"] = document.getElementById('patPhone').value;
+                    pat["טלפון"] = phoneVal;
                     pat["תעריף ברירת מחדל"] = Number(document.getElementById('patRate').value);
                 }
             } else {
                 db.patients.push({
                     "מזהה מטופל": "PAT-" + Math.floor(100 + Math.random() * 900),
                     "שם מלא": name,
-                    "טלפון": document.getElementById('patPhone').value,
+                    "טלפון": phoneVal,
                     "תעריף ברירת מחדל": Number(document.getElementById('patRate').value),
                     "סטטוס": "פעיל"
                 });
