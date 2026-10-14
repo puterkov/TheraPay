@@ -33,31 +33,49 @@
             overflow: hidden; 
         }
 
-        /* Sidebar & Navigation */
+        /* Desktop Sidebar Navigation */
         .sidebar { 
-            width: 240px; 
+            width: 250px; 
             background-color: #090d16; 
             border-left: 1px solid var(--border-color); 
             display: flex; 
             flex-direction: column; 
             padding: 20px; 
             flex-shrink: 0; 
+            z-index: 1001;
+            transition: right 0.3s ease;
+        }
+
+        .sidebar-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 25px;
         }
 
         .brand { 
             display: flex; 
             align-items: center; 
             gap: 10px; 
-            margin-bottom: 25px; 
             font-size: 1.35rem; 
             font-weight: 700; 
             color: var(--accent-teal); 
         }
 
+        .close-drawer-btn {
+            display: none;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 4px;
+        }
+
         .nav-items { 
             display: flex; 
             flex-direction: column; 
-            gap: 6px; 
+            gap: 8px; 
             flex: 1; 
             overflow-y: auto; 
         }
@@ -65,13 +83,13 @@
         .nav-btn { 
             display: flex; 
             align-items: center; 
-            gap: 10px; 
-            padding: 10px 14px; 
-            border-radius: 8px; 
+            gap: 12px; 
+            padding: 12px 14px; 
+            border-radius: 10px; 
             color: var(--text-muted); 
             background: transparent; 
             border: none; 
-            font-size: 0.9rem; 
+            font-size: 0.95rem; 
             font-weight: 500;
             cursor: pointer; 
             text-align: right; 
@@ -85,13 +103,21 @@
             font-weight: 600;
         }
 
-        .sync-status { 
-            font-size: 0.78rem; 
-            color: var(--text-muted); 
-            margin-top: 15px; 
-            padding-top: 10px;
-            border-top: 1px solid var(--border-color);
-            text-align: center;
+        /* Drawer Overlay Backdrop */
+        .drawer-backdrop {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.65);
+            backdrop-filter: blur(3px);
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .drawer-backdrop.active {
+            display: block;
+            opacity: 1;
         }
 
         /* Main Area */
@@ -100,49 +126,132 @@
             display: flex; 
             flex-direction: column; 
             overflow-y: auto; 
-            padding: 20px; 
+            padding: 20px 25px; 
         }
 
-        .top-bar { 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            margin-bottom: 15px; 
-            gap: 15px;
-            flex-wrap: wrap;
-        }
-
-        .top-actions {
+        /* Header Bar with Hamburger & Dedicated Sync */
+        .header-bar {
             display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            background-color: #131c2e;
+            padding: 12px 18px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            margin-bottom: 20px;
+            gap: 15px;
         }
 
-        /* Button Styling Touch-Optimized */
-        .btn-action, .btn-sync, .btn-pay, .btn-whatsapp, .btn-morning {
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .hamburger-btn {
+            display: none;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            font-size: 1.4rem;
+            padding: 6px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .header-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Header Sync Badge Button */
+        .header-sync-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            border-radius: 20px;
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid #3b82f6;
+            color: #60a5fa;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .header-sync-btn:active {
+            transform: scale(0.95);
+        }
+
+        .header-sync-btn.connected {
+            background: rgba(16, 185, 129, 0.15);
+            border-color: var(--success);
+            color: var(--success);
+        }
+
+        /* Prominent Action Buttons on Dashboard */
+        .dashboard-quick-actions {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .btn-primary-action {
+            background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%);
+            color: #ffffff;
+            border: none;
+            border-radius: 12px;
+            padding: 14px 18px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 4px 14px rgba(20, 184, 166, 0.3);
+            transition: all 0.2s ease;
+            min-height: 52px;
+        }
+
+        .btn-primary-action:active {
+            transform: scale(0.97);
+            box-shadow: 0 2px 6px rgba(20, 184, 166, 0.2);
+        }
+
+        /* General Buttons */
+        .btn-action, .btn-pay, .btn-whatsapp, .btn-morning {
             display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 6px;
-            padding: 8px 14px;
-            border-radius: 8px;
+            padding: 10px 16px;
+            border-radius: 10px;
             font-weight: 600;
-            font-size: 0.88rem;
+            font-size: 0.9rem;
             border: none;
             cursor: pointer;
             transition: transform 0.1s ease, opacity 0.2s ease;
             text-decoration: none;
-            min-height: 40px;
+            min-height: 42px;
         }
 
-        .btn-action:active, .btn-sync:active, .btn-pay:active, .btn-whatsapp:active, .btn-morning:active {
+        .btn-action:active, .btn-pay:active, .btn-whatsapp:active, .btn-morning:active {
             transform: scale(0.97);
         }
 
         .btn-action { background-color: var(--accent-teal); color: #fff; }
         .btn-action:hover { background-color: var(--accent-teal-hover); }
 
-        .btn-sync { background-color: #3b82f6; color: #fff; }
         .btn-pay { background-color: var(--success); color: #fff; }
         .btn-whatsapp { background-color: var(--whatsapp-green); color: #fff; }
         .btn-morning { background-color: var(--morning-green); color: #fff; }
@@ -151,89 +260,80 @@
         .cards-grid { 
             display: grid; 
             grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); 
-            gap: 12px; 
-            margin-bottom: 15px; 
+            gap: 15px; 
+            margin-bottom: 20px; 
         }
 
         .card { 
             background-color: var(--bg-card); 
             border: 1px solid var(--border-color); 
-            border-radius: 12px; 
-            padding: 14px; 
+            border-radius: 14px; 
+            padding: 16px; 
             display: flex;
             flex-direction: column;
             justify-content: center;
         }
 
-        .card-title { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px; font-weight: 500; }
-        .card-value { font-size: 1.4rem; font-weight: 700; color: var(--accent-teal); }
+        .card-title { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 4px; font-weight: 500; }
+        .card-value { font-size: 1.5rem; font-weight: 700; color: var(--accent-teal); }
 
         /* Filters */
         .filter-box { 
             background: var(--bg-card); 
-            padding: 12px 15px; 
-            border-radius: 10px; 
+            padding: 12px 16px; 
+            border-radius: 12px; 
             border: 1px solid var(--border-color); 
-            margin-bottom: 15px; 
+            margin-bottom: 20px; 
             display: flex; 
             align-items: center; 
             gap: 12px; 
             flex-wrap: wrap; 
         }
 
-        .filter-group { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 130px; }
-        .filter-group label { font-size: 0.82rem; color: var(--text-muted); font-weight: 600; white-space: nowrap; }
+        .filter-group { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 140px; }
+        .filter-group label { font-size: 0.85rem; color: var(--text-muted); font-weight: 600; white-space: nowrap; }
         .filter-group select { 
             width: 100%; 
-            padding: 8px 10px; 
-            border-radius: 6px; 
+            padding: 9px 12px; 
+            border-radius: 8px; 
             border: 1px solid var(--border-color); 
             background: var(--bg-primary); 
             color: #fff; 
             font-size: 15px; 
-            height: 38px;
+            height: 40px;
         }
 
         /* Batch Action Bar */
         .batch-bar {
             background-color: #162032;
             border: 1px solid var(--accent-teal);
-            border-radius: 10px;
-            padding: 12px 15px;
-            margin-bottom: 12px;
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 15px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
-            gap: 10px;
+            gap: 12px;
         }
 
-        .batch-info {
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: var(--text-main);
-        }
+        .batch-info { font-size: 0.92rem; font-weight: 600; color: var(--text-main); }
+        .batch-actions { display: flex; gap: 8px; }
 
-        .batch-actions {
-            display: flex;
-            gap: 8px;
-        }
-
-        /* High-Density Clean Table */
+        /* Clean High-Density Tables */
         .table-container { 
             background-color: var(--bg-card); 
-            border-radius: 10px; 
+            border-radius: 12px; 
             border: 1px solid var(--border-color); 
             overflow-x: auto; 
             -webkit-overflow-scrolling: touch;
         }
 
-        table { width: 100%; border-collapse: collapse; min-width: 500px; }
-        th, td { text-align: right; padding: 10px 12px; border-bottom: 1px solid var(--border-color); font-size: 0.85rem; }
-        th { color: var(--text-muted); font-size: 0.78rem; background-color: #162032; font-weight: 600; white-space: nowrap; }
+        table { width: 100%; border-collapse: collapse; min-width: 520px; }
+        th, td { text-align: right; padding: 12px 14px; border-bottom: 1px solid var(--border-color); font-size: 0.88rem; }
+        th { color: var(--text-muted); font-size: 0.8rem; background-color: #162032; font-weight: 600; white-space: nowrap; }
         tr:hover { background-color: var(--bg-card-hover); }
 
-        /* Custom Checkbox */
         input[type="checkbox"] {
             width: 18px;
             height: 18px;
@@ -241,7 +341,7 @@
             cursor: pointer;
         }
 
-        .badge { padding: 3px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; display: inline-block; }
+        .badge { padding: 4px 10px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; display: inline-block; }
         .badge-success { background: rgba(16, 185, 129, 0.2); color: var(--success); }
         .badge-warning { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
 
@@ -262,105 +362,98 @@
 
         .modal-content { 
             background: var(--bg-card); 
-            padding: 20px; 
-            border-radius: 14px; 
+            padding: 22px; 
+            border-radius: 16px; 
             width: 100%; 
-            max-width: 450px; 
+            max-width: 460px; 
             max-height: 90vh;
             overflow-y: auto;
             border: 1px solid var(--border-color); 
             box-shadow: 0 20px 30px rgba(0,0,0,0.6); 
         }
 
-        .modal-title { font-size: 1.1rem; margin-bottom: 12px; color: var(--text-main); font-weight: 700; }
-        .form-group { margin-bottom: 12px; }
-        .form-group label { display: block; margin-bottom: 4px; color: var(--text-muted); font-size: 0.82rem; font-weight: 500; }
+        .modal-title { font-size: 1.15rem; margin-bottom: 14px; color: var(--text-main); font-weight: 700; }
+        .form-group { margin-bottom: 14px; }
+        .form-group label { display: block; margin-bottom: 6px; color: var(--text-muted); font-size: 0.85rem; font-weight: 500; }
         .form-group input, .form-group select, .form-group textarea { 
             width: 100%; 
-            padding: 10px; 
-            border-radius: 6px; 
+            padding: 11px; 
+            border-radius: 8px; 
             border: 1px solid var(--border-color); 
             background: var(--bg-primary); 
             color: #fff; 
-            font-size: 15px; 
+            font-size: 16px; 
         }
 
-        /* 📱 Mobile Layout Tuning (Smartphones <= 768px) */
+        /* 📱 Mobile Adjustments */
         @media (max-width: 768px) {
             body { flex-direction: column; height: 100dvh; }
 
             .sidebar { 
-                width: 100%; 
-                border-left: none; 
-                border-bottom: 1px solid var(--border-color); 
-                padding: 10px 12px 6px 12px; 
-                background-color: #0d1322;
+                position: fixed;
+                top: 0;
+                right: -280px;
+                width: 260px;
+                height: 100%;
+                box-shadow: -10px 0 30px rgba(0, 0, 0, 0.7);
+                border-left: none;
+                border-right: 1px solid var(--border-color);
             }
 
-            .brand { margin-bottom: 8px; font-size: 1.15rem; justify-content: space-between; }
-            .sync-status { margin-top: 0; padding-top: 0; border-top: none; font-size: 0.72rem; }
-
-            .nav-items { 
-                flex-direction: row; 
-                overflow-x: auto; 
-                gap: 6px; 
-                padding-bottom: 4px; 
-                -webkit-overflow-scrolling: touch; 
-                scrollbar-width: none;
-            }
-            .nav-items::-webkit-scrollbar { display: none; }
-
-            .nav-btn { 
-                white-space: nowrap; 
-                font-size: 0.82rem; 
-                padding: 6px 10px; 
-                min-height: 36px;
-                border-radius: 6px;
-                background-color: rgba(255,255,255,0.05);
-            }
+            .sidebar.open { right: 0; }
+            .close-drawer-btn { display: block; }
+            .hamburger-btn { display: block; }
 
             .main-content { padding: 12px; }
 
-            .top-bar { flex-direction: column; align-items: stretch; gap: 10px; margin-bottom: 12px; }
-            .top-bar h2 { font-size: 1.2rem; }
+            .header-bar {
+                padding: 10px 12px;
+                margin-bottom: 12px;
+                border-radius: 10px;
+            }
 
-            .top-actions {
-                display: grid;
-                grid-template-columns: repeat(3, 1fr);
+            .header-title { font-size: 1.1rem; }
+            .header-sync-btn { padding: 6px 12px; font-size: 0.8rem; }
+
+            .dashboard-quick-actions {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 8px;
+                margin-bottom: 15px;
+            }
+
+            .btn-primary-action {
+                font-size: 0.85rem;
+                padding: 10px 8px;
+                min-height: 46px;
                 gap: 6px;
-                width: 100%;
             }
 
-            .top-actions .btn-action, 
-            .top-actions .btn-sync {
-                width: 100%;
-                padding: 6px 4px;
-                font-size: 0.78rem;
-                justify-content: center;
-                min-height: 38px;
-            }
-
-            .cards-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
-            .card { padding: 10px 12px; }
-            .card-title { font-size: 0.72rem; }
-            .card-value { font-size: 1.2rem; }
+            .cards-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 12px; }
+            .card { padding: 12px; }
+            .card-title { font-size: 0.75rem; }
+            .card-value { font-size: 1.3rem; }
 
             .filter-box { padding: 10px; gap: 8px; margin-bottom: 12px; flex-direction: column; }
             .filter-group { width: 100%; flex-direction: row; }
-            .filter-group label { width: 80px; font-size: 0.78rem; }
+            .filter-group label { width: 80px; font-size: 0.8rem; }
 
             .batch-bar { flex-direction: column; align-items: stretch; gap: 8px; padding: 10px; }
             .batch-actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 
-            th, td { padding: 8px 6px; font-size: 0.8rem; }
+            th, td { padding: 10px 8px; font-size: 0.82rem; }
         }
     </style>
 </head>
 <body>
-    <div class="sidebar">
-        <div class="brand">
-            <span>⚡ TheraPay</span>
-            <div class="sync-status" id="syncStatus">מצב: מקומי בלבד</div>
+
+    <!-- Drawer Backdrop Overlay -->
+    <div class="drawer-backdrop" id="drawerBackdrop" onclick="closeDrawer()"></div>
+
+    <!-- Right Navigation Drawer -->
+    <div class="sidebar" id="sidebarDrawer">
+        <div class="sidebar-header">
+            <div class="brand">⚡ TheraPay</div>
+            <button class="close-drawer-btn" onclick="closeDrawer()">✕</button>
         </div>
         <div class="nav-items">
             <button class="nav-btn active" id="btn-dashboard" onclick="switchTab('dashboard')">📊 דשבורד</button>
@@ -373,21 +466,42 @@
         </div>
     </div>
 
+    <!-- Main Content Area -->
     <div class="main-content">
-        <div class="top-bar">
-            <h2 id="pageTitle">דשבורד ראשי</h2>
-            <div class="top-actions">
-                <button class="btn-sync" onclick="document.getElementById('syncModal').style.display='flex'">☁️ סנכרון</button>
-                <button class="btn-action" onclick="openPatientModal()">+ מטופל</button>
-                <button class="btn-action" onclick="openAppointmentModal()">+ פגישה</button>
+        
+        <!-- Header Bar -->
+        <div class="header-bar">
+            <div class="header-right">
+                <button class="hamburger-btn" onclick="toggleDrawer()">☰</button>
+                <div class="header-title" id="pageTitle">דשבורד ראשי</div>
+            </div>
+            <div class="header-left">
+                <button class="header-sync-btn" id="headerSyncBtn" onclick="document.getElementById('syncModal').style.display='flex'">
+                    <span id="syncBadgeIcon">☁️</span>
+                    <span id="syncBadgeText">סנכרון Sheets</span>
+                </button>
             </div>
         </div>
 
         <!-- דשבורד -->
         <div id="tab-dashboard" class="tab-section active">
+            
+            <!-- כפתורי פעולה מהירה - מופיעים אך ורק בדשבורד! -->
+            <div class="dashboard-quick-actions">
+                <button class="btn-primary-action" onclick="openPatientModal()">
+                    <span style="font-size:1.2rem;">👤</span>
+                    <span>+ מטופל חדש</span>
+                </button>
+                <button class="btn-primary-action" onclick="openAppointmentModal()">
+                    <span style="font-size:1.2rem;">📅</span>
+                    <span>+ קבע פגישה</span>
+                </button>
+            </div>
+
             <div class="cards-grid">
                 <div class="card"><div class="card-title">מטופלים פעילים</div><div class="card-value" id="statActivePatients">0</div></div>
-                <div class="card"><div class="card-title">פגישות במערכת</div><div class="card-value" id="statMonthApps">0</div></div>
+                <div class="card"><div class="card-title">פגישות החודש</div><div class="card-value" id="statThisMonthApps">0</div></div>
+                <div class="card"><div class="card-title">פגישות חודש שעבר</div><div class="card-value" id="statLastMonthApps">0</div></div>
                 <div class="card"><div class="card-title">סה"כ נגבה</div><div class="card-value" style="color:var(--success)" id="statMonthRevenue">₪0</div></div>
                 <div class="card"><div class="card-title">חובות פתוחים</div><div class="card-value" style="color:var(--danger)" id="statPendingPayments">₪0</div></div>
             </div>
@@ -439,7 +553,7 @@
             </div>
         </div>
 
-        <!-- חיובים, תשלומים מרוכזים וחובות -->
+        <!-- חיובים ותשלומים מרוכזים -->
         <div id="tab-payments" class="tab-section">
             <div class="filter-box">
                 <div class="filter-group">
@@ -705,8 +819,40 @@
             const url = localStorage.getItem('gas_url');
             if (url) {
                 document.getElementById('scriptUrl').value = url;
-                document.getElementById('syncStatus').innerText = 'מצב: מחובר ☁️';
+                updateHeaderSyncStatus(true);
                 syncFromCloud(false);
+            } else {
+                updateHeaderSyncStatus(false);
+            }
+        }
+
+        function toggleDrawer() {
+            const drawer = document.getElementById('sidebarDrawer');
+            const backdrop = document.getElementById('drawerBackdrop');
+            drawer.classList.toggle('open');
+            backdrop.classList.toggle('active');
+        }
+
+        function closeDrawer() {
+            const drawer = document.getElementById('sidebarDrawer');
+            const backdrop = document.getElementById('drawerBackdrop');
+            drawer.classList.remove('open');
+            backdrop.classList.remove('active');
+        }
+
+        function updateHeaderSyncStatus(isConnected) {
+            const btn = document.getElementById('headerSyncBtn');
+            const icon = document.getElementById('syncBadgeIcon');
+            const text = document.getElementById('syncBadgeText');
+
+            if (isConnected) {
+                btn.classList.add('connected');
+                icon.innerText = '🟢';
+                text.innerText = 'מחובר ☁️';
+            } else {
+                btn.classList.remove('connected');
+                icon.innerText = '☁️';
+                text.innerText = 'סנכרון Sheets';
             }
         }
 
@@ -795,6 +941,7 @@
             const cleanUrl = urlInput.trim();
             if (!cleanUrl.includes('/exec')) return alert('⚠️ הקישור חייב להכיל /exec.');
             localStorage.setItem('gas_url', cleanUrl);
+            updateHeaderSyncStatus(true);
             syncFromCloud(true);
         }
 
@@ -808,7 +955,7 @@
                 .then(r => r.json())
                 .then(data => {
                     if (btn) btn.innerText = 'שמור וסנכרן כעת';
-                    document.getElementById('syncStatus').innerText = 'מצב: מחובר ☁️';
+                    updateHeaderSyncStatus(true);
                     document.getElementById('syncModal').style.display = 'none';
 
                     if (data && data.patients && Array.isArray(data.patients)) db.patients = data.patients.map(normalizePatient);
@@ -872,6 +1019,7 @@
         }
 
         function switchTab(tabId) {
+            closeDrawer();
             document.querySelectorAll('.tab-section').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
             document.getElementById('tab-' + tabId).classList.add('active');
@@ -889,27 +1037,64 @@
             document.getElementById('pageTitle').innerText = titleMap[tabId] || 'TheraPay';
         }
 
+        /* 📊 חישוב דינמי של מדדי הדשבורד (פגישות החודש + חודש שעבר) */
         function renderStats() {
-            const monthVal = document.getElementById('reportMonthSelect')?.value || "ALL";
-            let filteredApps = db.appointments;
-            if (monthVal !== "ALL") {
-                filteredApps = filteredApps.filter(a => extractMonthFromDate(a["תאריך ושעה"] || a["תאריך"]) === monthVal);
-            }
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
 
-            document.getElementById('statActivePatients').innerText = db.patients.length;
-            document.getElementById('statMonthApps').innerText = filteredApps.length;
-            
-            let paid = 0, pending = 0;
-            filteredApps.forEach(a => {
+            let prevMonthNum = now.getMonth(); 
+            let prevYear = currentYear;
+            if (prevMonthNum === 0) {
+                prevMonthNum = 12;
+                prevYear = currentYear - 1;
+            }
+            const prevMonth = String(prevMonthNum).padStart(2, '0');
+
+            let thisMonthCount = 0;
+            let lastMonthCount = 0;
+            let totalPaid = 0;
+            let totalDebt = 0;
+
+            db.appointments.forEach(a => {
+                let dStr = formatDateForInput(a["תאריך ושעה"] || a["תאריך"]);
                 let price = Number(a["סכום לתשלום"]) || 0;
-                if (a["סטטוס תשלום"] === 'שולם' || a["סטטוס תשלום"] === 'אישור תשלום') paid += price;
-                else pending += price;
+                let isPaid = a["סטטוס תשלום"] === 'שולם' || a["סטטוס תשלום"] === 'אישור תשלום';
+
+                if (dStr) {
+                    let parts = dStr.split('-');
+                    if (parts.length >= 2) {
+                        let y = parseInt(parts[0]);
+                        let m = parts[1];
+                        if (y === currentYear && m === currentMonth) thisMonthCount++;
+                        if (y === prevYear && m === prevMonth) lastMonthCount++;
+                    }
+                }
+
+                if (isPaid) totalPaid += price;
+                else totalDebt += price;
             });
 
-            document.getElementById('statMonthRevenue').innerText = '₪' + paid;
-            document.getElementById('statPendingPayments').innerText = '₪' + pending;
-            document.getElementById('reportPaidTotal').innerText = '₪' + paid;
-            document.getElementById('reportDebtTotal').innerText = '₪' + pending;
+            if (document.getElementById('statActivePatients')) document.getElementById('statActivePatients').innerText = db.patients.length;
+            if (document.getElementById('statThisMonthApps')) document.getElementById('statThisMonthApps').innerText = thisMonthCount;
+            if (document.getElementById('statLastMonthApps')) document.getElementById('statLastMonthApps').innerText = lastMonthCount;
+            if (document.getElementById('statMonthRevenue')) document.getElementById('statMonthRevenue').innerText = '₪' + totalPaid;
+            if (document.getElementById('statPendingPayments')) document.getElementById('statPendingPayments').innerText = '₪' + totalDebt;
+
+            const reportMonthVal = document.getElementById('reportMonthSelect')?.value || "ALL";
+            let reportPaid = 0, reportDebt = 0;
+            db.appointments.forEach(a => {
+                if (reportMonthVal !== "ALL") {
+                    let m = extractMonthFromDate(a["תאריך ושעה"] || a["תאריך"]);
+                    if (m !== reportMonthVal) return;
+                }
+                let price = Number(a["סכום לתשלום"]) || 0;
+                if (a["סטטוס תשלום"] === 'שולם' || a["סטטוס תשלום"] === 'אישור תשלום') reportPaid += price;
+                else reportDebt += price;
+            });
+
+            if (document.getElementById('reportPaidTotal')) document.getElementById('reportPaidTotal').innerText = '₪' + reportPaid;
+            if (document.getElementById('reportDebtTotal')) document.getElementById('reportDebtTotal').innerText = '₪' + reportDebt;
         }
 
         function renderPatients() {
@@ -954,7 +1139,6 @@
             document.getElementById('appointmentsTable').innerHTML = rows;
         }
 
-        /* 💳 ניהול תשלומים מרוכז עם Checkboxes ו-Default Checked */
         function renderPatientPayments() {
             const patVal = document.getElementById('paymentPatientSelect')?.value || "ALL";
             const monthVal = document.getElementById('paymentMonthSelect')?.value || "ALL";
