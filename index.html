@@ -497,7 +497,7 @@
                 <div class="card"><div class="card-title">חובות פתוחים</div><div class="card-value" style="color:var(--danger)" id="statPendingPayments">₪0</div></div>
             </div>
 
-            <!-- כפתורי פעולה מהירה - הועברו לתחתית הדשבורד! -->
+            <!-- כפתורי פעולה מהירה בתחתית הדשבורד -->
             <div class="dashboard-quick-actions">
                 <button class="btn-primary-action" onclick="openPatientModal()">
                     <span style="font-size:1.2rem;">👤</span>
@@ -643,6 +643,11 @@
 
         <!-- Morning -->
         <div id="tab-morning" class="tab-section">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+                <h3 style="font-size:1rem;">🧾 הפקת קבלות ומסמכים (Morning / Green Invoice)</h3>
+                <button class="btn-action" style="font-size:0.82rem; padding:6px 12px; background:#00c853;" onclick="openMorningConfigModal()">⚙️ הגדרת מפתח API</button>
+            </div>
+
             <div class="filter-box">
                 <div class="filter-group">
                     <label>סנן מטופל:</label>
@@ -659,7 +664,7 @@
             </div>
 
             <div class="cards-grid">
-                <div class="card"><div class="card-title">סטטוס מורנינג</div><div class="card-value" style="color:var(--warning)" id="morningStatusText">מוכן לחיבור</div></div>
+                <div class="card"><div class="card-title">סטטוס חיבור API</div><div class="card-value" style="font-size:1.1rem;" id="morningStatusText">נדרשת הגדרה 🔴</div></div>
                 <div class="card"><div class="card-title">ממתינים לקבלה</div><div class="card-value" style="color:var(--warning)" id="morningPendingCount">0</div></div>
                 <div class="card"><div class="card-title">מסמכים שהופקו</div><div class="card-value" style="color:var(--success)" id="morningDocsCount">0</div></div>
             </div>
@@ -687,6 +692,26 @@
                 <div class="card"><div class="card-title">סה"כ הכנסות ששולמו</div><div class="card-value" style="color:var(--success)" id="reportPaidTotal">₪0</div></div>
                 <div class="card"><div class="card-title">סה"כ חוב פתוח</div><div class="card-value" style="color:var(--danger)" id="reportDebtTotal">₪0</div></div>
             </div>
+        </div>
+    </div>
+
+    <!-- מודאל הגדרות API עבור Morning -->
+    <div class="modal" id="morningConfigModal">
+        <div class="modal-content">
+            <div class="modal-title">⚙️ הגדרת חיבור ל-Morning (Green Invoice)</div>
+            <p style="font-size:0.82rem; color:var(--text-muted); margin-bottom:14px;">
+                כדי להפיק קבלות חוקיות, יש להוציא מפתח API מתוך חשבון ה-Morning שלך (תחת הגדרות מערכת ⬅️ ממשק API):
+            </p>
+            <div class="form-group">
+                <label>מפתח API (Key)</label>
+                <input type="text" id="morningApiKeyInput" placeholder="לדוגמה: id_xxxxxxxxx">
+            </div>
+            <div class="form-group">
+                <label>סוד API (Secret)</label>
+                <input type="password" id="morningApiSecretInput" placeholder="לדוגמה: secret_xxxxxxxxx">
+            </div>
+            <button class="btn-morning" style="width:100%; margin-bottom:8px;" onclick="saveMorningConfig()">שמור והתחבר ל-Morning</button>
+            <button class="btn-action" style="width:100%; background:var(--border-color);" onclick="document.getElementById('morningConfigModal').style.display='none'">ביטול</button>
         </div>
     </div>
 
@@ -818,6 +843,7 @@
             if (localApps) { try { db.appointments = JSON.parse(localApps).map(normalizeAppointment); } catch(e){} }
 
             populateFilterDropdowns();
+            checkMorningConfigStatus();
             renderAll();
             
             const url = localStorage.getItem('gas_url');
@@ -857,6 +883,43 @@
                 btn.classList.remove('connected');
                 icon.innerText = '☁️';
                 text.innerText = 'סנכרון Sheets';
+            }
+        }
+
+        /* 🧾 ניהול מפתחות API של Morning */
+        function openMorningConfigModal() {
+            document.getElementById('morningApiKeyInput').value = localStorage.getItem('tp_morning_key') || '';
+            document.getElementById('morningApiSecretInput').value = localStorage.getItem('tp_morning_secret') || '';
+            document.getElementById('morningConfigModal').style.display = 'flex';
+        }
+
+        function saveMorningConfig() {
+            const key = document.getElementById('morningApiKeyInput').value.trim();
+            const secret = document.getElementById('morningApiSecretInput').value.trim();
+
+            if (!key || !secret) {
+                return alert('נא למלא גם מפתח API וגם סוד API.');
+            }
+
+            localStorage.setItem('tp_morning_key', key);
+            localStorage.setItem('tp_morning_secret', secret);
+            document.getElementById('morningConfigModal').style.display = 'none';
+            checkMorningConfigStatus();
+            alert('🟢 פרטי API של Morning נשמרו בהצלחה!');
+        }
+
+        function checkMorningConfigStatus() {
+            const key = localStorage.getItem('tp_morning_key');
+            const secret = localStorage.getItem('tp_morning_secret');
+            const el = document.getElementById('morningStatusText');
+            if (el) {
+                if (key && secret) {
+                    el.innerText = 'מחובר 🟢';
+                    el.style.color = 'var(--success)';
+                } else {
+                    el.innerText = 'נדרשת הגדרה 🔴';
+                    el.style.color = 'var(--danger)';
+                }
             }
         }
 
