@@ -197,11 +197,12 @@
             color: var(--success);
         }
 
-        /* Prominent Action Buttons on Dashboard */
+        /* Prominent Action Buttons at Bottom of Dashboard */
         .dashboard-quick-actions {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 12px;
+            margin-top: 10px;
             margin-bottom: 20px;
         }
 
@@ -418,6 +419,7 @@
             .dashboard-quick-actions {
                 grid-template-columns: repeat(2, 1fr);
                 gap: 8px;
+                margin-top: 10px;
                 margin-bottom: 15px;
             }
 
@@ -428,7 +430,7 @@
                 gap: 6px;
             }
 
-            .cards-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 12px; }
+            .cards-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 10px; }
             .card { padding: 12px; }
             .card-title { font-size: 0.75rem; }
             .card-value { font-size: 1.3rem; }
@@ -486,7 +488,16 @@
         <!-- דשבורד -->
         <div id="tab-dashboard" class="tab-section active">
             
-            <!-- כפתורי פעולה מהירה - מופיעים אך ורק בדשבורד! -->
+            <!-- כרטיסיות נתונים ומדדים -->
+            <div class="cards-grid">
+                <div class="card"><div class="card-title">מטופלים פעילים</div><div class="card-value" id="statActivePatients">0</div></div>
+                <div class="card"><div class="card-title">פגישות החודש</div><div class="card-value" id="statThisMonthApps">0</div></div>
+                <div class="card"><div class="card-title">פגישות חודש שעבר</div><div class="card-value" id="statLastMonthApps">0</div></div>
+                <div class="card"><div class="card-title">סה"כ נגבה</div><div class="card-value" style="color:var(--success)" id="statMonthRevenue">₪0</div></div>
+                <div class="card"><div class="card-title">חובות פתוחים</div><div class="card-value" style="color:var(--danger)" id="statPendingPayments">₪0</div></div>
+            </div>
+
+            <!-- כפתורי פעולה מהירה - הועברו לתחתית הדשבורד! -->
             <div class="dashboard-quick-actions">
                 <button class="btn-primary-action" onclick="openPatientModal()">
                     <span style="font-size:1.2rem;">👤</span>
@@ -498,13 +509,6 @@
                 </button>
             </div>
 
-            <div class="cards-grid">
-                <div class="card"><div class="card-title">מטופלים פעילים</div><div class="card-value" id="statActivePatients">0</div></div>
-                <div class="card"><div class="card-title">פגישות החודש</div><div class="card-value" id="statThisMonthApps">0</div></div>
-                <div class="card"><div class="card-title">פגישות חודש שעבר</div><div class="card-value" id="statLastMonthApps">0</div></div>
-                <div class="card"><div class="card-title">סה"כ נגבה</div><div class="card-value" style="color:var(--success)" id="statMonthRevenue">₪0</div></div>
-                <div class="card"><div class="card-title">חובות פתוחים</div><div class="card-value" style="color:var(--danger)" id="statPendingPayments">₪0</div></div>
-            </div>
         </div>
 
         <!-- מטופלים -->
@@ -1037,7 +1041,6 @@
             document.getElementById('pageTitle').innerText = titleMap[tabId] || 'TheraPay';
         }
 
-        /* 📊 חישוב דינמי של מדדי הדשבורד (פגישות החודש + חודש שעבר) */
         function renderStats() {
             const now = new Date();
             const currentYear = now.getFullYear();
