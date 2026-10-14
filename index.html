@@ -1,146 +1,1699 @@
-function doGet(e) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var patSheet = ss.getSheetByName("patients") || ss.getSheets()[0];
-  var appSheet = ss.getSheetByName("appointments") || ss.getSheets()[1];
-  
-  var patData = sheetToObjects(patSheet);
-  var appData = sheetToObjects(appSheet);
-  
-  return ContentService.createTextOutput(JSON.stringify({
-    patients: patData,
-    appointments: appData
-  })).setMimeType(ContentService.MimeType.JSON);
-}
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TheraPay - ניהול קליניקה</title>
+    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-card: #1e293b;
+            --bg-card-hover: #334155;
+            --accent-teal: #14b8a6;
+            --accent-teal-hover: #0d9488;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: #334155;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --success: #10b981;
+            --whatsapp-green: #25d366;
+            --morning-green: #00c853;
+        }
 
-function doPost(e) {
-  try {
-    var data = JSON.parse(e.postData.contents);
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    
-    // אם זו בקשה להפקת חשבונית אמיתית במורנינג
-    if (data.action === "createMorningDoc") {
-      var result = createMorningDocument(data);
-      return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
-    }
-    
-    // שמירת כל הנתונים מחדש בגיליון
-    if (data.patients) saveToSheet(ss.getSheetByName("patients") || ss.getSheets()[0], data.patients);
-    if (data.appointments) saveToSheet(ss.getSheetByName("appointments") || ss.getSheets()[1], data.appointments);
-    
-    return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
-  } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
-  }
-}
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Heebo', sans-serif; -webkit-tap-highlight-color: transparent; }
+        
+        body { 
+            background-color: var(--bg-primary); 
+            color: var(--text-main); 
+            display: flex; 
+            height: 100vh; 
+            height: 100dvh;
+            overflow: hidden; 
+        }
 
-// פונקציית פנייה אמיתית ל-API של Morning
-function createMorningDocument(req) {
-  var apiKey = req.apiKey;
-  var apiSecret = req.apiSecret;
-  
-  if (!apiKey || !apiSecret) {
-    return { success: false, message: "חווטי API של Morning חסרים" };
-  }
-  
-  // 1. קבלת Token ממורנינג
-  var tokenUrl = "https://api.greeninvoice.co.il/v1/account/token";
-  var tokenOptions = {
-    method: "post",
-    contentType: "application/json",
-    payload: JSON.stringify({ id: apiKey, secret: apiSecret }),
-    muteHttpExceptions: true
-  };
-  
-  var tokenRes = UrlFetchApp.fetch(tokenUrl, tokenOptions);
-  var tokenJson = JSON.parse(tokenRes.getContentText());
-  
-  if (!tokenJson.token) {
-    return { success: false, message: "שגיאת אימות מול Morning: " + (tokenJson.message || "מפתח API שגוי") };
-  }
-  
-  var jwtToken = tokenJson.token;
-  
-  // 2. יצירת חשבונית מס קבלה (סוג מסמך 320)
-  var docUrl = "https://api.greeninvoice.co.il/v1/documents";
-  
-  // ניקוי מקפים מהטלפון לזיהוי רציף
-  var cleanPhone = String(req.clientPhone || "").replace(/[^0-9]/g, "");
-  
-  var payTypeMap = {
-    "מזומן": 1,
-    "צ'ק": 2,
-    "כרטיס אשראי": 3,
-    "העברה בנקאית": 4,
-    "ביט / פייבוקס": 10
-  };
-  
-  var payload = {
-    type: 320, // 320 = חשבונית מס קבלה
-    client: {
-      name: req.clientName,
-      phone: cleanPhone
-    },
-    income: [
-      {
-        description: req.description || "טיפול/ים בקליניקה",
-        quantity: 1,
-        price: Number(req.amount),
-        vatType: 1 // 1 = מחיר כולל מע"מ (עוסק מורשה)
-      }
-    ],
-    payment: [
-      {
-        type: payTypeMap[req.paymentMethod] || 10,
-        price: Number(req.amount)
-      }
-    ]
-  };
-  
-  var docOptions = {
-    method: "post",
-    contentType: "application/json",
-    headers: { Authorization: "Bearer " + jwtToken },
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true
-  };
-  
-  var docRes = UrlFetchApp.fetch(docUrl, docOptions);
-  var docJson = JSON.parse(docRes.getContentText());
-  
-  if (docJson.id) {
-    return {
-      success: true,
-      docNumber: docJson.number,
-      pdfUrl: docJson.url ? docJson.url.he : ""
-    };
-  } else {
-    return { success: false, message: docJson.message || "שגיאה ביצירת המסמך במורנינג" };
-  }
-}
+        /* Desktop Sidebar Navigation */
+        .sidebar { 
+            width: 250px; 
+            background-color: #090d16; 
+            border-left: 1px solid var(--border-color); 
+            display: flex; 
+            flex-direction: column; 
+            padding: 20px; 
+            flex-shrink: 0; 
+            z-index: 1001;
+            transition: right 0.3s ease;
+        }
 
-function sheetToObjects(sheet) {
-  if (!sheet) return [];
-  var values = sheet.getDataRange().getValues();
-  if (values.length < 2) return [];
-  var headers = values[0];
-  var result = [];
-  for (var i = 1; i < values.length; i++) {
-    var obj = {};
-    for (var j = 0; j < headers.length; j++) {
-      obj[headers[j]] = values[i][j];
-    }
-    result.push(obj);
-  }
-  return result;
-}
+        .sidebar-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 25px;
+        }
 
-function saveToSheet(sheet, data) {
-  if (!sheet || !data || data.length === 0) return;
-  sheet.clear();
-  var headers = Object.keys(data[0]);
-  sheet.appendRow(headers);
-  data.forEach(function(row) {
-    var arr = headers.map(function(h) { return row[h] !== undefined ? row[h] : ""; });
-    sheet.appendRow(arr);
-  });
-}
+        .brand { 
+            display: flex; 
+            align-items: center; 
+            gap: 10px; 
+            font-size: 1.35rem; 
+            font-weight: 700; 
+            color: var(--accent-teal); 
+        }
+
+        .close-drawer-btn {
+            display: none;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 4px;
+        }
+
+        .nav-items { 
+            display: flex; 
+            flex-direction: column; 
+            gap: 8px; 
+            flex: 1; 
+            overflow-y: auto; 
+        }
+
+        .nav-btn { 
+            display: flex; 
+            align-items: center; 
+            gap: 12px; 
+            padding: 12px 14px; 
+            border-radius: 10px; 
+            color: var(--text-muted); 
+            background: transparent; 
+            border: none; 
+            font-size: 0.95rem; 
+            font-weight: 500;
+            cursor: pointer; 
+            text-align: right; 
+            width: 100%; 
+            transition: all 0.2s ease; 
+        }
+
+        .nav-btn:hover, .nav-btn.active { 
+            background-color: var(--accent-teal); 
+            color: #fff; 
+            font-weight: 600;
+        }
+
+        /* Drawer Overlay Backdrop */
+        .drawer-backdrop {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.65);
+            backdrop-filter: blur(3px);
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .drawer-backdrop.active {
+            display: block;
+            opacity: 1;
+        }
+
+        /* Main Area */
+        .main-content { 
+            flex: 1; 
+            display: flex; 
+            flex-direction: column; 
+            overflow-y: auto; 
+            padding: 20px 25px; 
+        }
+
+        /* Header Bar */
+        .header-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background-color: #131c2e;
+            padding: 12px 18px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            margin-bottom: 20px;
+            gap: 15px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .hamburger-btn {
+            display: none;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            font-size: 1.4rem;
+            padding: 6px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .header-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Header Sync Badge Button */
+        .header-sync-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            border-radius: 20px;
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid #3b82f6;
+            color: #60a5fa;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .header-sync-btn:active {
+            transform: scale(0.95);
+        }
+
+        .header-sync-btn.connected {
+            background: rgba(16, 185, 129, 0.15);
+            border-color: var(--success);
+            color: var(--success);
+        }
+
+        /* Action Buttons at Bottom of Dashboard */
+        .dashboard-quick-actions {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-top: 10px;
+            margin-bottom: 20px;
+        }
+
+        .btn-primary-action {
+            background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%);
+            color: #ffffff;
+            border: none;
+            border-radius: 12px;
+            padding: 14px 18px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 4px 14px rgba(20, 184, 166, 0.3);
+            transition: all 0.2s ease;
+            min-height: 52px;
+        }
+
+        .btn-primary-action:active {
+            transform: scale(0.97);
+            box-shadow: 0 2px 6px rgba(20, 184, 166, 0.2);
+        }
+
+        /* General Buttons */
+        .btn-action, .btn-pay, .btn-whatsapp, .btn-morning {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 10px 16px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            border: none;
+            cursor: pointer;
+            transition: transform 0.1s ease, opacity 0.2s ease;
+            text-decoration: none;
+            min-height: 42px;
+        }
+
+        .btn-action:active, .btn-pay:active, .btn-whatsapp:active, .btn-morning:active {
+            transform: scale(0.97);
+        }
+
+        .btn-action { background-color: var(--accent-teal); color: #fff; }
+        .btn-action:hover { background-color: var(--accent-teal-hover); }
+
+        .btn-pay { background-color: var(--success); color: #fff; }
+        .btn-whatsapp { background-color: var(--whatsapp-green); color: #fff; }
+        .btn-morning { background-color: var(--morning-green); color: #fff; }
+
+        /* Dashboard Cards Grid */
+        .cards-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); 
+            gap: 15px; 
+            margin-bottom: 20px; 
+        }
+
+        .card { 
+            background-color: var(--bg-card); 
+            border: 1px solid var(--border-color); 
+            border-radius: 14px; 
+            padding: 16px; 
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .card-title { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 4px; font-weight: 500; }
+        .card-value { font-size: 1.5rem; font-weight: 700; color: var(--accent-teal); }
+
+        /* Filters */
+        .filter-box { 
+            background: var(--bg-card); 
+            padding: 12px 16px; 
+            border-radius: 12px; 
+            border: 1px solid var(--border-color); 
+            margin-bottom: 20px; 
+            display: flex; 
+            align-items: center; 
+            gap: 12px; 
+            flex-wrap: wrap; 
+        }
+
+        .filter-group { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 140px; }
+        .filter-group label { font-size: 0.85rem; color: var(--text-muted); font-weight: 600; white-space: nowrap; }
+        .filter-group select { 
+            width: 100%; 
+            padding: 9px 12px; 
+            border-radius: 8px; 
+            border: 1px solid var(--border-color); 
+            background: var(--bg-primary); 
+            color: #fff; 
+            font-size: 15px; 
+            height: 40px;
+        }
+
+        /* Batch Action Bar */
+        .batch-bar {
+            background-color: #162032;
+            border: 1px solid var(--accent-teal);
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .batch-info { font-size: 0.92rem; font-weight: 600; color: var(--text-main); }
+        .batch-actions { display: flex; gap: 8px; }
+
+        /* Tables */
+        .table-container { 
+            background-color: var(--bg-card); 
+            border-radius: 12px; 
+            border: 1px solid var(--border-color); 
+            overflow-x: auto; 
+            -webkit-overflow-scrolling: touch;
+        }
+
+        table { width: 100%; border-collapse: collapse; min-width: 520px; }
+        th, td { text-align: right; padding: 12px 14px; border-bottom: 1px solid var(--border-color); font-size: 0.88rem; }
+        th { color: var(--text-muted); font-size: 0.8rem; background-color: #162032; font-weight: 600; white-space: nowrap; }
+        tr:hover { background-color: var(--bg-card-hover); }
+
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--accent-teal);
+            cursor: pointer;
+        }
+
+        .badge { padding: 4px 10px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; display: inline-block; }
+        .badge-success { background: rgba(16, 185, 129, 0.2); color: var(--success); }
+        .badge-warning { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+
+        .tab-section { display: none; }
+        .tab-section.active { display: block; }
+
+        /* Modals */
+        .modal { 
+            display: none; 
+            position: fixed; 
+            top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.85); 
+            justify-content: center; 
+            align-items: center; 
+            z-index: 9999; 
+            padding: 15px; 
+        }
+
+        .modal-content { 
+            background: var(--bg-card); 
+            padding: 22px; 
+            border-radius: 16px; 
+            width: 100%; 
+            max-width: 460px; 
+            max-height: 90vh;
+            overflow-y: auto;
+            border: 1px solid var(--border-color); 
+            box-shadow: 0 20px 30px rgba(0,0,0,0.6); 
+        }
+
+        .modal-title { font-size: 1.15rem; margin-bottom: 14px; color: var(--text-main); font-weight: 700; }
+        .form-group { margin-bottom: 14px; }
+        .form-group label { display: block; margin-bottom: 6px; color: var(--text-muted); font-size: 0.85rem; font-weight: 500; }
+        .form-group input, .form-group select, .form-group textarea { 
+            width: 100%; 
+            padding: 11px; 
+            border-radius: 8px; 
+            border: 1px solid var(--border-color); 
+            background: var(--bg-primary); 
+            color: #fff; 
+            font-size: 16px; 
+        }
+
+        @media (max-width: 768px) {
+            body { flex-direction: column; height: 100dvh; }
+
+            .sidebar { 
+                position: fixed;
+                top: 0;
+                right: -280px;
+                width: 260px;
+                height: 100%;
+                box-shadow: -10px 0 30px rgba(0, 0, 0, 0.7);
+                border-left: none;
+                border-right: 1px solid var(--border-color);
+            }
+
+            .sidebar.open { right: 0; }
+            .close-drawer-btn { display: block; }
+            .hamburger-btn { display: block; }
+
+            .main-content { padding: 12px; }
+
+            .header-bar {
+                padding: 10px 12px;
+                margin-bottom: 12px;
+                border-radius: 10px;
+            }
+
+            .header-title { font-size: 1.1rem; }
+            .header-sync-btn { padding: 6px 12px; font-size: 0.8rem; }
+
+            .dashboard-quick-actions {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 8px;
+                margin-top: 10px;
+                margin-bottom: 15px;
+            }
+
+            .btn-primary-action {
+                font-size: 0.85rem;
+                padding: 10px 8px;
+                min-height: 46px;
+                gap: 6px;
+            }
+
+            .cards-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 10px; }
+            .card { padding: 12px; }
+            .card-title { font-size: 0.75rem; }
+            .card-value { font-size: 1.3rem; }
+
+            .filter-box { padding: 10px; gap: 8px; margin-bottom: 12px; flex-direction: column; }
+            .filter-group { width: 100%; flex-direction: row; }
+            .filter-group label { width: 80px; font-size: 0.8rem; }
+
+            .batch-bar { flex-direction: column; align-items: stretch; gap: 8px; padding: 10px; }
+            .batch-actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+
+            th, td { padding: 10px 8px; font-size: 0.82rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="drawer-backdrop" id="drawerBackdrop" onclick="closeDrawer()"></div>
+
+    <!-- Sidebar Navigation -->
+    <div class="sidebar" id="sidebarDrawer">
+        <div class="sidebar-header">
+            <div class="brand">⚡ TheraPay</div>
+            <button class="close-drawer-btn" onclick="closeDrawer()">✕</button>
+        </div>
+        <div class="nav-items">
+            <button class="nav-btn active" id="btn-dashboard" onclick="switchTab('dashboard')">📊 דשבורד</button>
+            <button class="nav-btn" id="btn-patients" onclick="switchTab('patients')">👥 מטופלים</button>
+            <button class="nav-btn" id="btn-appointments" onclick="switchTab('appointments')">📅 פגישות</button>
+            <button class="nav-btn" id="btn-payments" onclick="switchTab('payments')">💳 תשלומים</button>
+            <button class="nav-btn" id="btn-whatsapp" onclick="switchTab('whatsapp')">📲 WhatsApp</button>
+            <button class="nav-btn" id="btn-morning" onclick="switchTab('morning')">🧾 Morning</button>
+            <button class="nav-btn" id="btn-reports" onclick="switchTab('reports')">📈 דוחות</button>
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="main-content">
+        
+        <div class="header-bar">
+            <div class="header-right">
+                <button class="hamburger-btn" onclick="toggleDrawer()">☰</button>
+                <div class="header-title" id="pageTitle">דשבורד ראשי</div>
+            </div>
+            <div class="header-left">
+                <button class="header-sync-btn" id="headerSyncBtn" onclick="document.getElementById('syncModal').style.display='flex'">
+                    <span id="syncBadgeIcon">☁️</span>
+                    <span id="syncBadgeText">סנכרון Sheets</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- דשבורד -->
+        <div id="tab-dashboard" class="tab-section active">
+            <div class="cards-grid">
+                <div class="card"><div class="card-title">מטופלים פעילים</div><div class="card-value" id="statActivePatients">0</div></div>
+                <div class="card"><div class="card-title">פגישות החודש</div><div class="card-value" id="statThisMonthApps">0</div></div>
+                <div class="card"><div class="card-title">פגישות חודש שעבר</div><div class="card-value" id="statLastMonthApps">0</div></div>
+                <div class="card"><div class="card-title">סה"כ נגבה (כולל מע"מ)</div><div class="card-value" style="color:var(--success)" id="statMonthRevenue">₪0</div></div>
+                <div class="card"><div class="card-title">חובות פתוחים</div><div class="card-value" style="color:var(--danger)" id="statPendingPayments">₪0</div></div>
+            </div>
+
+            <div class="dashboard-quick-actions">
+                <button class="btn-primary-action" onclick="openPatientModal()">
+                    <span style="font-size:1.2rem;">👤</span>
+                    <span>+ מטופל חדש</span>
+                </button>
+                <button class="btn-primary-action" onclick="openAppointmentModal()">
+                    <span style="font-size:1.2rem;">📅</span>
+                    <span>+ קבע פגישה</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- מטופלים -->
+        <div id="tab-patients" class="tab-section">
+            <div class="filter-box">
+                <div class="filter-group">
+                    <label>חיפוש מטופל:</label>
+                    <select id="patListFilter" onchange="renderPatients()">
+                        <option value="ALL">-- כל המטופלים --</option>
+                    </select>
+                </div>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr><th>מזהה</th><th>שם מלא</th><th>טלפון</th><th>תעריף (כולל מע"מ)</th><th>סטטוס</th><th>פעולות</th></tr>
+                    </thead>
+                    <tbody id="patientsTable"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- יומן פגישות -->
+        <div id="tab-appointments" class="tab-section">
+            <div class="filter-box">
+                <div class="filter-group">
+                    <label>סנן מטופל:</label>
+                    <select id="appPatientFilter" onchange="renderAppointments()">
+                        <option value="ALL">-- כל המטופלים --</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>סנן חודש:</label>
+                    <select id="appMonthFilter" onchange="renderAppointments()">
+                        <option value="ALL">-- כל החודשים --</option>
+                    </select>
+                </div>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr><th>תאריך</th><th>שם המטופל</th><th>סכום (כולל מע"מ)</th><th>סטטוס תשלום</th><th>אמצעי תשלום</th><th>פעולות</th></tr>
+                    </thead>
+                    <tbody id="appointmentsTable"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- חיובים ותשלומים -->
+        <div id="tab-payments" class="tab-section">
+            <div class="filter-box">
+                <div class="filter-group">
+                    <label>בחר מטופל:</label>
+                    <select id="paymentPatientSelect" onchange="renderPatientPayments()">
+                        <option value="ALL">-- כל המטופלים --</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>סנן חודש:</label>
+                    <select id="paymentMonthSelect" onchange="renderPatientPayments()">
+                        <option value="ALL">-- כל החודשים --</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="cards-grid">
+                <div class="card"><div class="card-title">סה"כ חיובים</div><div class="card-value" id="payTotalValue">₪0</div></div>
+                <div class="card"><div class="card-title">סה"כ נגבה (כולל מע"מ)</div><div class="card-value" style="color:var(--success)" id="payTotalPaid">₪0</div></div>
+                <div class="card"><div class="card-title">יתרת חוב למטופל</div><div class="card-value" style="color:var(--danger)" id="payTotalDebt">₪0</div></div>
+            </div>
+
+            <div class="batch-bar">
+                <div class="batch-info" id="batchPaySummary">נבחרו 0 פגישות | סה"כ לתשלום: ₪0</div>
+                <div class="batch-actions">
+                    <button class="btn-pay" onclick="openBatchPayModal('APPROVED')">💳 אישור תשלום</button>
+                    <button class="btn-morning" id="btnExecuteBatchReceipt" onclick="openBatchPayModal('WITH_RECEIPT')">🧾 הנפק חשבונית מס קבלה</button>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width:30px; text-align:center;"><input type="checkbox" id="selectAllPayCheck" checked onchange="toggleAllPayCheckboxes(this)"></th>
+                            <th>תאריך</th>
+                            <th>שם המטופל</th>
+                            <th>סכום (כולל מע"מ)</th>
+                            <th>סטטוס תשלום</th>
+                            <th>מסמך משפטי</th>
+                        </tr>
+                    </thead>
+                    <tbody id="patientPaymentsTable"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- WhatsApp -->
+        <div id="tab-whatsapp" class="tab-section">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+                <h3 style="font-size:1rem;">📲 שליחת תזכורות ב-WhatsApp</h3>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span id="waConnectionBadge" class="badge badge-warning">מצב: לא מחובר 🔴</span>
+                    <button class="btn-action" style="font-size:0.75rem; padding:4px 8px; min-height:30px;" onclick="toggleWaConnection()">חבר / נתק</button>
+                </div>
+            </div>
+            
+            <div class="filter-box">
+                <div class="filter-group">
+                    <label>סנן מטופל:</label>
+                    <select id="waPatientSelect" onchange="renderWhatsAppDebtors()">
+                        <option value="ALL">-- כל המטופלים --</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>סנן חודש:</label>
+                    <select id="waMonthSelect" onchange="renderWhatsAppDebtors()">
+                        <option value="ALL">-- כל החודשים --</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr><th>שם המטופל</th><th>טלפון</th><th>טיפולים</th><th>חוב</th><th>שליחה</th></tr>
+                    </thead>
+                    <tbody id="whatsappDebtorsTable"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Morning -->
+        <div id="tab-morning" class="tab-section">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+                <h3 style="font-size:1rem;">🧾 הנפקת חשבוניות מס קבלה (Morning - עוסק מורשה)</h3>
+                <button class="btn-action" style="font-size:0.82rem; padding:6px 12px; background:#00c853;" onclick="openMorningConfigModal()">⚙️ הגדרת מפתח API</button>
+            </div>
+
+            <div class="filter-box">
+                <div class="filter-group">
+                    <label>סנן מטופל:</label>
+                    <select id="morningPatientSelect" onchange="renderMorningTable()">
+                        <option value="ALL">-- כל המטופלים --</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>סנן חודש:</label>
+                    <select id="morningMonthSelect" onchange="renderMorningTable()">
+                        <option value="ALL">-- כל החודשים --</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="cards-grid">
+                <div class="card"><div class="card-title">סטטוס חיבור API</div><div class="card-value" style="font-size:1.1rem;" id="morningStatusText">נדרשת הגדרה 🔴</div></div>
+                <div class="card"><div class="card-title">ממתינים לחשבונית מס קבלה</div><div class="card-value" style="color:var(--warning)" id="morningPendingCount">0</div></div>
+                <div class="card"><div class="card-title">מסמכים שהופקו</div><div class="card-value" style="color:var(--success)" id="morningDocsCount">0</div></div>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr><th>תאריך</th><th>שם המטופל</th><th>סכום (כולל מע"מ)</th><th>אמצעי תשלום</th><th>סטטוס מסמך</th><th>פעולה</th></tr>
+                    </thead>
+                    <tbody id="morningPaymentsTable"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- דוחות -->
+        <div id="tab-reports" class="tab-section">
+            <div class="filter-box">
+                <div class="filter-group">
+                    <label>סנן חודש:</label>
+                    <select id="reportMonthSelect" onchange="renderStats()">
+                        <option value="ALL">-- כל התקופה --</option>
+                    </select>
+                </div>
+            </div>
+            <div class="cards-grid">
+                <div class="card"><div class="card-title">סה"כ הכנסות ששולמו (כולל מע"מ)</div><div class="card-value" style="color:var(--success)" id="reportPaidTotal">₪0</div></div>
+                <div class="card"><div class="card-title">סה"כ חוב פתוח</div><div class="card-value" style="color:var(--danger)" id="reportDebtTotal">₪0</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- מודאל הגדרות API עבור Morning -->
+    <div class="modal" id="morningConfigModal">
+        <div class="modal-content">
+            <div class="modal-title">⚙️ הגדרת חיבור ל-Morning (Green Invoice)</div>
+            <p style="font-size:0.82rem; color:var(--text-muted); margin-bottom:14px;">
+                הזן את מפתח ה-API מחשבון ה-Morning שלך (תחת הגדרות מערכת ⬅️ ממשק API):
+            </p>
+            <div class="form-group">
+                <label>מפתח API (Key)</label>
+                <input type="text" id="morningApiKeyInput" placeholder="לדוגמה: id_xxxxxxxxx">
+            </div>
+            <div class="form-group">
+                <label>סוד API (Secret)</label>
+                <input type="password" id="morningApiSecretInput" placeholder="לדוגמה: secret_xxxxxxxxx">
+            </div>
+            <button class="btn-morning" style="width:100%; margin-bottom:8px;" onclick="saveMorningConfig()">שמור והתחבר ל-Morning</button>
+            <button class="btn-action" style="width:100%; background:var(--border-color);" onclick="document.getElementById('morningConfigModal').style.display='none'">ביטול</button>
+        </div>
+    </div>
+
+    <!-- מודאל תצוגה מקדימה ל-WhatsApp -->
+    <div class="modal" id="waPreviewModal">
+        <div class="modal-content">
+            <div class="modal-title">📲 תצוגה מקדימה - WhatsApp</div>
+            <div class="form-group">
+                <label>מספר טלפון</label>
+                <input type="text" id="waPhoneInput" readonly>
+            </div>
+            <div class="form-group">
+                <label>תוכן ההודעה</label>
+                <textarea id="waMessageText" rows="7"></textarea>
+            </div>
+            <div style="display:flex; gap:10px; margin-bottom:10px;">
+                <button class="btn-action" style="flex:1; background:#3b82f6;" onclick="copyWaText()" id="btnCopyText">📋 העתק</button>
+                <button class="btn-whatsapp" style="flex:1;" onclick="sendWhatsAppFromPreview()">📲 שלח</button>
+            </div>
+            <button class="btn-action" style="width:100%; background:var(--border-color);" onclick="document.getElementById('waPreviewModal').style.display='none'">סגור</button>
+        </div>
+    </div>
+
+    <!-- מודאל בחירת גבייה והפקת טיוטה/מסמך -->
+    <div class="modal" id="batchPayModal">
+        <div class="modal-content">
+            <div class="modal-title" id="batchModalTitle">🧾 הנפקת חשבונית מס קבלה מרוכזת</div>
+            <p id="batchModalDesc" style="font-size:0.88rem; color:var(--accent-teal); margin-bottom:8px; font-weight:600;"></p>
+            <div id="batchDatesListNotice" style="font-size:0.8rem; color:var(--text-muted); background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; margin-bottom:14px; border:1px solid var(--border-color);"></div>
+            <input type="hidden" id="batchPayMode">
+            <div class="form-group">
+                <label>אמצעי תשלום</label>
+                <select id="batchPayMethod">
+                    <option value="ביט / פייבוקס">ביט / פייבוקס</option>
+                    <option value="העברה בנקאית">העברה בנקאית</option>
+                    <option value="כרטיס אשראי">כרטיס אשראי</option>
+                    <option value="מזומן">מזומן</option>
+                    <option value="צ'ק">צ'ק</option>
+                </select>
+            </div>
+            
+            <button class="btn-action" id="btnCreateDraft" style="width:100%; margin-bottom:8px; background:#3b82f6;" onclick="executeBatchPayment(true)">👁️ הצג טיוטה לבדיקה (Draft)</button>
+            <button class="btn-pay" id="btnConfirmBatchPay" style="width:100%; margin-bottom:8px;" onclick="executeBatchPayment(false)">✓ הנפק חשבונית מס קבלה סופית</button>
+            <button class="btn-action" style="width:100%; background:var(--border-color);" onclick="document.getElementById('batchPayModal').style.display='none'">ביטול</button>
+        </div>
+    </div>
+
+    <!-- מודאל תצוגה מקדימה של טיוטת PDF לפני אישור -->
+    <div class="modal" id="draftPreviewModal">
+        <div class="modal-content">
+            <div class="modal-title">📄 תצוגת טיוטה - Morning</div>
+            <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">
+                בדוק את קובץ ה-PDF של הטיוטה שהופק במורנינג לפני ההנפקה הסופית:
+            </p>
+            <div style="text-align:center; margin-bottom:15px;">
+                <a id="draftPdfLinkBtn" href="#" target="_blank" class="btn-action" style="background:#00c853; width:100%; padding:12px;">📄 לחץ כאן לפתיחת קובץ ה-PDF של הטיוטה</a>
+            </div>
+            <button class="btn-pay" id="btnFinalizeFromDraft" style="width:100%; margin-bottom:8px;" onclick="finalizeFromDraftModal()">🟢 הכל תקין - הנפק חשבונית סופית!</button>
+            <button class="btn-action" style="width:100%; background:var(--border-color);" onclick="document.getElementById('draftPreviewModal').style.display='none'">✏️ חזור לתיקון</button>
+        </div>
+    </div>
+
+    <!-- מודאל חיבור Google Sheets -->
+    <div class="modal" id="syncModal">
+        <div class="modal-content">
+            <div class="modal-title">☁️ חיבור ל-Google Sheets</div>
+            <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">הדבק כאן את קישור ה-Apps Script המסתיים ב-exec:</p>
+            <div class="form-group">
+                <input type="text" id="scriptUrl" placeholder="https://script.google.com/macros/s/.../exec">
+            </div>
+            <button class="btn-action" style="width:100%; margin-bottom:8px;" id="btnSaveSync" onclick="saveSyncUrl()">שמור וסנכרן כעת</button>
+            <button class="btn-action" style="width:100%; background:var(--border-color);" onclick="document.getElementById('syncModal').style.display='none'">סגור</button>
+        </div>
+    </div>
+
+    <!-- מודאל הוספת/עריכת מטופל -->
+    <div class="modal" id="patientModal">
+        <div class="modal-content">
+            <div class="modal-title" id="patModalTitle">הוספת מטופל חדש</div>
+            <input type="hidden" id="editPatId">
+            <div class="form-group"><label>שם מלא</label><input type="text" id="patName"></div>
+            <div class="form-group"><label>טלפון</label><input type="text" id="patPhone"></div>
+            <div class="form-group"><label>תעריף כולל מע"מ (₪)</label><input type="number" id="patRate" value="350"></div>
+            <button class="btn-action" style="width:100%; margin-bottom:8px;" onclick="savePatient()">שמור מטופל</button>
+            <button class="btn-action" style="width:100%; background:var(--border-color);" onclick="document.getElementById('patientModal').style.display='none'">ביטול</button>
+        </div>
+    </div>
+
+    <!-- מודאל הוספת/עריכת פגישה -->
+    <div class="modal" id="appointmentModal">
+        <div class="modal-content">
+            <div class="modal-title" id="appModalTitle">קביעת פגישה חדשה</div>
+            <input type="hidden" id="editAppId">
+            <div class="form-group">
+                <label>בחר מטופל</label>
+                <select id="appPatient" onchange="autoFillPrice()"></select>
+            </div>
+            <div class="form-group"><label>תאריך הפגישה</label><input type="date" id="appDate"></div>
+            <div class="form-group"><label>מחיר כולל מע"מ (₪)</label><input type="number" id="appPrice"></div>
+            <div class="form-group">
+                <label>סטטוס תשלום</label>
+                <select id="appStatus">
+                    <option value="טרם שולם" selected>טרם שולם</option>
+                    <option value="אישור תשלום">אישור תשלום</option>
+                    <option value="שולם">שולם</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>אמצעי תשלום</label>
+                <select id="appMethod">
+                    <option value="">-- ללא / טרם נקבע --</option>
+                    <option value="ביט / פייבוקס">ביט / פייבוקס</option>
+                    <option value="העברה בנקאית">העברה בנקאית</option>
+                    <option value="כרטיס אשראי">כרטיס אשראי</option>
+                    <option value="מזומן">מזומן</option>
+                    <option value="צ'ק">צ'ק</option>
+                </select>
+            </div>
+            <button class="btn-action" style="width:100%; margin-bottom:8px;" onclick="saveAppointment()">שמור פגישה</button>
+            <button class="btn-action" style="width:100%; background:var(--border-color);" onclick="document.getElementById('appointmentModal').style.display='none'">ביטול</button>
+        </div>
+    </div>
+
+    <script>
+        let db = { patients: [], appointments: [] };
+        let isWaConnected = false;
+
+        const monthsHebrew = [
+            { val: "01", name: "01 - ינואר" },
+            { val: "02", name: "02 - פברואר" },
+            { val: "03", name: "03 - מרץ" },
+            { val: "04", name: "04 - אפריל" },
+            { val: "05", name: "05 - מאי" },
+            { val: "06", name: "06 - יוני" },
+            { val: "07", name: "07 - יולי" },
+            { val: "08", name: "08 - אוגוסט" },
+            { val: "09", name: "09 - ספטמבר" },
+            { val: "10", name: "10 - אוקטובר" },
+            { val: "11", name: "11 - נובמבר" },
+            { val: "12", name: "12 - דצמבר" }
+        ];
+
+        function init() {
+            let localPats = localStorage.getItem('tp_patients');
+            let localApps = localStorage.getItem('tp_appointments');
+            if (localPats) { try { db.patients = JSON.parse(localPats).map(normalizePatient); } catch(e){} }
+            if (localApps) { try { db.appointments = JSON.parse(localApps).map(normalizeAppointment); } catch(e){} }
+
+            populateFilterDropdowns();
+            checkMorningConfigStatus();
+            renderAll();
+            
+            const url = localStorage.getItem('gas_url');
+            if (url) {
+                document.getElementById('scriptUrl').value = url;
+                updateHeaderSyncStatus(true);
+                syncFromCloud(false);
+            } else {
+                updateHeaderSyncStatus(false);
+            }
+        }
+
+        function toggleDrawer() {
+            const drawer = document.getElementById('sidebarDrawer');
+            const backdrop = document.getElementById('drawerBackdrop');
+            drawer.classList.toggle('open');
+            backdrop.classList.toggle('active');
+        }
+
+        function closeDrawer() {
+            const drawer = document.getElementById('sidebarDrawer');
+            const backdrop = document.getElementById('drawerBackdrop');
+            drawer.classList.remove('open');
+            backdrop.classList.remove('active');
+        }
+
+        function updateHeaderSyncStatus(isConnected) {
+            const btn = document.getElementById('headerSyncBtn');
+            const icon = document.getElementById('syncBadgeIcon');
+            const text = document.getElementById('syncBadgeText');
+
+            if (isConnected) {
+                btn.classList.add('connected');
+                icon.innerText = '🟢';
+                text.innerText = 'מחובר ☁️';
+            } else {
+                btn.classList.remove('connected');
+                icon.innerText = '☁️';
+                text.innerText = 'סנכרון Sheets';
+            }
+        }
+
+        function openMorningConfigModal() {
+            document.getElementById('morningApiKeyInput').value = localStorage.getItem('tp_morning_key') || '';
+            document.getElementById('morningApiSecretInput').value = localStorage.getItem('tp_morning_secret') || '';
+            document.getElementById('morningConfigModal').style.display = 'flex';
+        }
+
+        function saveMorningConfig() {
+            const key = document.getElementById('morningApiKeyInput').value.trim();
+            const secret = document.getElementById('morningApiSecretInput').value.trim();
+
+            if (!key || !secret) {
+                return alert('נא למלא גם מפתח API וגם סוד API.');
+            }
+
+            localStorage.setItem('tp_morning_key', key);
+            localStorage.setItem('tp_morning_secret', secret);
+            document.getElementById('morningConfigModal').style.display = 'none';
+            checkMorningConfigStatus();
+            alert('🟢 פרטי API של Morning נשמרו בהצלחה!');
+        }
+
+        function checkMorningConfigStatus() {
+            const key = localStorage.getItem('tp_morning_key');
+            const secret = localStorage.getItem('tp_morning_secret');
+            const el = document.getElementById('morningStatusText');
+            if (el) {
+                if (key && secret) {
+                    el.innerText = 'מחובר 🟢 (עוסק מורשה)';
+                    el.style.color = 'var(--success)';
+                } else {
+                    el.innerText = 'נדרשת הגדרה 🔴';
+                    el.style.color = 'var(--danger)';
+                }
+            }
+        }
+
+        function formatPhoneForDisplay(phone) {
+            if (!phone) return '';
+            let str = String(phone).trim().replace(/[^0-9]/g, '');
+            if (!str) return '';
+            if (str.startsWith('972')) str = '0' + str.slice(3);
+            if (!str.startsWith('0') && (str.length === 8 || str.length === 9)) str = '0' + str;
+            if (str.length === 10 && str.startsWith('05')) return str.slice(0, 3) + '-' + str.slice(3);
+            else if (str.length === 9 && str.startsWith('0')) return str.slice(0, 2) + '-' + str.slice(2);
+            return str;
+        }
+
+        function formatPhoneForWa(phone) {
+            if (!phone) return '';
+            let str = String(phone).trim().replace(/[^0-9]/g, '');
+            if (str.startsWith('972')) return str;
+            if (str.startsWith('0')) return '972' + str.slice(1);
+            if (str.length === 9 || str.length === 8) return '972' + str;
+            return str;
+        }
+
+        function formatDateForInput(dateStr) {
+            if (!dateStr) return new Date().toISOString().split('T')[0];
+            let str = String(dateStr).trim();
+            if (str.includes('T')) {
+                let d = new Date(str);
+                if (!isNaN(d.getTime())) {
+                    let yyyy = d.getFullYear();
+                    let mm = String(d.getMonth() + 1).padStart(2, '0');
+                    let dd = String(d.getDate()).padStart(2, '0');
+                    return `${yyyy}-${mm}-${dd}`;
+                }
+            }
+            if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+            let parts = str.split(/[\/\.-]/);
+            if (parts.length === 3) {
+                if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
+                else if (parts[2].length === 4) return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+            }
+            return str;
+        }
+
+        function extractMonthFromDate(dateStr) {
+            if (!dateStr) return "";
+            let clean = formatDateForInput(dateStr);
+            let parts = clean.split('-');
+            if (parts.length >= 2) {
+                let m = parseInt(parts[1]);
+                if (m >= 1 && m <= 12) return String(m).padStart(2, '0');
+            }
+            return "";
+        }
+
+        function normalizePatient(p) {
+            let rawPhone = p["טלפון"] || p["נייד"] || p["סלולרי"] || p["טלפון נייד"] || p["Phone"] || p["Mobile"] || p["phone"] || "";
+            return {
+                "מזהה מטופל": p["מזהה מטופל"] || p["מזהה"] || p["ID"] || "",
+                "שם מלא": p["שם מלא"] || p["שם"] || p["Name"] || "",
+                "טלפון": formatPhoneForDisplay(rawPhone),
+                "תעריף ברירת מחדל": Number(p["תעריף ברירת מחדל"] || p["תעריף"] || p["מחיר"] || 350),
+                "סטטוס": p["סטטוס"] || "פעיל"
+            };
+        }
+
+        function normalizeAppointment(a) {
+            let rawDate = a["תאריך ושעה"] || a["תאריך"] || a["Date"] || "";
+            let formattedDate = formatDateForInput(rawDate);
+            return {
+                "מזהה פגישה": a["מזהה פגישה"] || a["ID"] || "APP-" + Date.now(),
+                "תאריך ושעה": formattedDate,
+                "תאריך": formattedDate,
+                "שם המטופל": a["שם המטופל"] || a["מטופל"] || a["Patient"] || "",
+                "סכום לתשלום": Number(a["סכום לתשלום"] || a["סכום"] || a["מחיר"] || 0),
+                "סטטוס תשלום": a["סטטוס תשלום"] || a["סטטוס"] || "טרם שולם",
+                "אמצעי תשלום": a["אמצעי תשלום"] || "",
+                "מספר חשבונית": a["מספר חשבונית"] || a["morning_status"] || a["מזהה Morning"] || "לא הונפקה",
+                "morning_status": a["מספר חשבונית"] || a["morning_status"] || a["מזהה Morning"] || "לא הונפקה",
+                "pdf_url": a["pdf_url"] || ""
+            };
+        }
+
+        function saveSyncUrl() {
+            const urlInput = document.getElementById('scriptUrl').value;
+            if (!urlInput) return alert('נא להזין קישור');
+            const cleanUrl = urlInput.trim();
+            if (!cleanUrl.includes('/exec')) return alert('⚠️ הקישור חייב להכיל /exec.');
+            localStorage.setItem('gas_url', cleanUrl);
+            updateHeaderSyncStatus(true);
+            syncFromCloud(true);
+        }
+
+        function syncFromCloud(showAlert = false) {
+            const url = localStorage.getItem('gas_url');
+            if (!url) return;
+            const btn = document.getElementById('btnSaveSync');
+            if (btn) btn.innerText = 'מסנכרן... ⏳';
+
+            fetch(url)
+                .then(r => r.json())
+                .then(data => {
+                    if (btn) btn.innerText = 'שמור וסנכרן כעת';
+                    updateHeaderSyncStatus(true);
+                    document.getElementById('syncModal').style.display = 'none';
+
+                    if (data && data.patients && Array.isArray(data.patients)) db.patients = data.patients.map(normalizePatient);
+                    if (data && data.appointments && Array.isArray(data.appointments)) db.appointments = data.appointments.map(normalizeAppointment);
+
+                    populateFilterDropdowns();
+                    renderAll();
+                    if (showAlert) alert('🟢 הסנכרון הושלם בהצלחה!');
+                })
+                .catch(e => {
+                    if (btn) btn.innerText = 'שמור וסנכרן כעת';
+                    if (showAlert) alert('🔴 שגיאה בחיבור לענן.');
+                    console.error('Sync Error:', e);
+                });
+        }
+
+        function syncToCloud() {
+            const url = localStorage.getItem('gas_url');
+            if (!url) return;
+            fetch(url, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(db)
+            }).then(() => console.log('Synced to cloud!'));
+        }
+
+        function populateFilterDropdowns() {
+            const patOpts = '<option value="ALL">-- כל המטופלים --</option>' + db.patients.map(p => `<option value="${p["שם מלא"]}">${p["שם מלא"]}</option>`).join('');
+            const monthOpts = '<option value="ALL">-- כל החודשים --</option>' + monthsHebrew.map(m => `<option value="${m.val}">${m.name}</option>`).join('');
+
+            ['patListFilter', 'appPatientFilter', 'paymentPatientSelect', 'waPatientSelect', 'morningPatientSelect'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) { const val = el.value; el.innerHTML = patOpts; el.value = val || "ALL"; }
+            });
+
+            ['appMonthFilter', 'paymentMonthSelect', 'waMonthSelect', 'morningMonthSelect', 'reportMonthSelect'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) { const val = el.value; el.innerHTML = monthOpts; el.value = val || "ALL"; }
+            });
+        }
+
+        function filterAppointmentsList(patientVal, monthVal) {
+            return db.appointments.filter(a => {
+                if (patientVal && patientVal !== "ALL" && a["שם המטופל"] !== patientVal) return false;
+                if (monthVal && monthVal !== "ALL") {
+                    let m = extractMonthFromDate(a["תאריך ושעה"] || a["תאריך"]);
+                    if (m !== monthVal) return false;
+                }
+                return true;
+            });
+        }
+
+        function renderAll() {
+            renderStats();
+            renderPatients();
+            renderAppointments();
+            renderPatientPayments();
+            renderWhatsAppDebtors();
+            renderMorningTable();
+        }
+
+        function switchTab(tabId) {
+            closeDrawer();
+            document.querySelectorAll('.tab-section').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById('tab-' + tabId).classList.add('active');
+            document.getElementById('btn-' + tabId).classList.add('active');
+
+            const titleMap = {
+                'dashboard': 'דשבורד ראשי',
+                'patients': 'ניהול מטופלים',
+                'appointments': 'יומן פגישות',
+                'payments': 'חיובים ותשלומים',
+                'whatsapp': 'שליחת WhatsApp',
+                'morning': 'הפקת מסמכים (Morning)',
+                'reports': 'דוחות כספיים'
+            };
+            document.getElementById('pageTitle').innerText = titleMap[tabId] || 'TheraPay';
+        }
+
+        function renderStats() {
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+
+            let prevMonthNum = now.getMonth(); 
+            let prevYear = currentYear;
+            if (prevMonthNum === 0) {
+                prevMonthNum = 12;
+                prevYear = currentYear - 1;
+            }
+            const prevMonth = String(prevMonthNum).padStart(2, '0');
+
+            let thisMonthCount = 0;
+            let lastMonthCount = 0;
+            let totalPaid = 0;
+            let totalDebt = 0;
+
+            db.appointments.forEach(a => {
+                let dStr = formatDateForInput(a["תאריך ושעה"] || a["תאריך"]);
+                let price = Number(a["סכום לתשלום"]) || 0;
+                let isPaid = a["סטטוס תשלום"] === 'שולם' || a["סטטוס תשלום"] === 'אישור תשלום';
+
+                if (dStr) {
+                    let parts = dStr.split('-');
+                    if (parts.length >= 2) {
+                        let y = parseInt(parts[0]);
+                        let m = parts[1];
+                        if (y === currentYear && m === currentMonth) thisMonthCount++;
+                        if (y === prevYear && m === prevMonth) lastMonthCount++;
+                    }
+                }
+
+                if (isPaid) totalPaid += price;
+                else totalDebt += price;
+            });
+
+            if (document.getElementById('statActivePatients')) document.getElementById('statActivePatients').innerText = db.patients.length;
+            if (document.getElementById('statThisMonthApps')) document.getElementById('statThisMonthApps').innerText = thisMonthCount;
+            if (document.getElementById('statLastMonthApps')) document.getElementById('statLastMonthApps').innerText = lastMonthCount;
+            if (document.getElementById('statMonthRevenue')) document.getElementById('statMonthRevenue').innerText = '₪' + totalPaid;
+            if (document.getElementById('statPendingPayments')) document.getElementById('statPendingPayments').innerText = '₪' + totalDebt;
+
+            const reportMonthVal = document.getElementById('reportMonthSelect')?.value || "ALL";
+            let reportPaid = 0, reportDebt = 0;
+            db.appointments.forEach(a => {
+                if (reportMonthVal !== "ALL") {
+                    let m = extractMonthFromDate(a["תאריך ושעה"] || a["תאריך"]);
+                    if (m !== reportMonthVal) return;
+                }
+                let price = Number(a["סכום לתשלום"]) || 0;
+                if (a["סטטוס תשלום"] === 'שולם' || a["סטטוס תשלום"] === 'אישור תשלום') reportPaid += price;
+                else reportDebt += price;
+            });
+
+            if (document.getElementById('reportPaidTotal')) document.getElementById('reportPaidTotal').innerText = '₪' + reportPaid;
+            if (document.getElementById('reportDebtTotal')) document.getElementById('reportDebtTotal').innerText = '₪' + reportDebt;
+        }
+
+        function renderPatients() {
+            const patVal = document.getElementById('patListFilter')?.value || "ALL";
+            let list = db.patients;
+            if (patVal !== "ALL") list = list.filter(p => p["שם מלא"] === patVal);
+
+            document.getElementById('patientsTable').innerHTML = list.map(p => `
+                <tr>
+                    <td>${p["מזהה מטופל"]||''}</td>
+                    <td><b>${p["שם מלא"]||''}</b></td>
+                    <td>${formatPhoneForDisplay(p["טלפון"])}</td>
+                    <td>₪${p["תעריף ברירת מחדל"]||0}</td>
+                    <td><span class="badge badge-success">${p["סטטוס"]||'פעיל'}</span></td>
+                    <td><button class="btn-action" style="font-size:0.75rem; padding:4px 8px; background:#3b82f6;" onclick="openPatientModal('${p["מזהה מטופל"]}')">✏️ ערוך</button></td>
+                </tr>
+            `).join('');
+        }
+
+        function renderAppointments() {
+            const patVal = document.getElementById('appPatientFilter')?.value || "ALL";
+            const monthVal = document.getElementById('appMonthFilter')?.value || "ALL";
+            const filteredApps = filterAppointmentsList(patVal, monthVal);
+
+            const rows = filteredApps.map(a => {
+                const isPaid = a["סטטוס תשלום"] === 'שולם' || a["סטטוס תשלום"] === 'אישור תשלום';
+                return `
+                    <tr>
+                        <td>${formatDateForInput(a["תאריך ושעה"]||a["תאריך"])}</td>
+                        <td><b>${a["שם המטופל"]||''}</b></td>
+                        <td>₪${a["סכום לתשלום"]||0}</td>
+                        <td><span class="badge ${isPaid?'badge-success':'badge-warning'}">${a["סטטוס תשלום"]}</span></td>
+                        <td>${a["אמצעי תשלום"]||'-'}</td>
+                        <td>
+                            <button class="btn-action" style="font-size:0.75rem; padding:4px 8px; background:#3b82f6;" onclick="openAppointmentModal('${a["מזהה פגישה"]}')">✏️</button>
+                            <button class="btn-action" style="font-size:0.75rem; padding:4px 8px; background:var(--danger);" onclick="deleteAppointment('${a["מזהה פגישה"]}')">🗑️</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+            
+            document.getElementById('appointmentsTable').innerHTML = rows;
+        }
+
+        function renderPatientPayments() {
+            const patVal = document.getElementById('paymentPatientSelect')?.value || "ALL";
+            const monthVal = document.getElementById('paymentMonthSelect')?.value || "ALL";
+            const filteredApps = filterAppointmentsList(patVal, monthVal);
+
+            let totalValue = 0, totalPaid = 0, totalDebt = 0;
+            filteredApps.forEach(a => {
+                let price = Number(a["סכום לתשלום"]) || 0;
+                totalValue += price;
+                if (a["סטטוס תשלום"] === 'שולם' || a["סטטוס תשלום"] === 'אישור תשלום') totalPaid += price;
+                else totalDebt += price;
+            });
+
+            document.getElementById('payTotalValue').innerText = '₪' + totalValue;
+            document.getElementById('payTotalPaid').innerText = '₪' + totalPaid;
+            document.getElementById('payTotalDebt').innerText = '₪' + totalDebt;
+
+            const tbody = document.getElementById('patientPaymentsTable');
+            if (filteredApps.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">אין פגישות להצגה</td></tr>`;
+                updateBatchPaySummary();
+                return;
+            }
+
+            tbody.innerHTML = filteredApps.map(a => {
+                const isUnpaid = a["סטטוס תשלום"] !== 'שולם' && a["סטטוס תשלום"] !== 'אישור תשלום';
+                const isPaid = !isUnpaid;
+                const docText = a.morning_status || a["מספר חשבונית"] || '-';
+                const pdfBtn = a.pdf_url ? ` <a href="${a.pdf_url}" target="_blank" style="color:#60a5fa; text-decoration:underline;">[📄 הצג PDF]</a>` : '';
+                return `
+                    <tr>
+                        <td style="text-align:center;">
+                            <input type="checkbox" class="pay-app-check" data-id="${a["מזהה פגישה"]}" data-price="${a["סכום לתשלום"]}" data-date="${formatDateForInput(a["תאריך ושעה"]||a["תאריך"])}" ${isUnpaid ? 'checked' : ''} onchange="updateBatchPaySummary()">
+                        </td>
+                        <td>${formatDateForInput(a["תאריך ושעה"]||a["תאריך"])}</td>
+                        <td><b>${a["שם המטופל"]}</b></td>
+                        <td>₪${a["סכום לתשלום"]}</td>
+                        <td><span class="badge ${isPaid?'badge-success':'badge-warning'}">${a["סטטוס תשלום"]}</span></td>
+                        <td>${docText}${pdfBtn}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            document.getElementById('selectAllPayCheck').checked = true;
+            updateBatchPaySummary();
+        }
+
+        function toggleAllPayCheckboxes(masterCheck) {
+            const checks = document.querySelectorAll('.pay-app-check');
+            checks.forEach(c => c.checked = masterCheck.checked);
+            updateBatchPaySummary();
+        }
+
+        function updateBatchPaySummary() {
+            const checks = document.querySelectorAll('.pay-app-check:checked');
+            let count = 0, sum = 0;
+            checks.forEach(c => {
+                count++;
+                sum += Number(c.getAttribute('data-price')) || 0;
+            });
+            document.getElementById('batchPaySummary').innerText = `נבחרו ${count} פגישות | סה"כ כולל מע"מ: ₪${sum}`;
+        }
+
+        function openBatchPayModal(mode) {
+            const checks = document.querySelectorAll('.pay-app-check:checked');
+            if (checks.length === 0) return alert('נא לסמן לפחות פגישה אחת לגבייה.');
+
+            let count = checks.length;
+            let sum = 0;
+            let datesArr = [];
+            checks.forEach(c => {
+                sum += Number(c.getAttribute('data-price')) || 0;
+                let d = c.getAttribute('data-date');
+                if (d) {
+                    let p = d.split('-');
+                    if (p.length === 3) datesArr.push(`${p[2]}/${p[1]}`);
+                    else datesArr.push(d);
+                }
+            });
+
+            document.getElementById('batchPayMode').value = mode;
+            document.getElementById('batchModalTitle').innerText = mode === 'WITH_RECEIPT' ? '🧾 הנפקת חשבונית מס קבלה מרוכזת' : '💳 אישור תשלום מרוכז';
+            document.getElementById('batchModalDesc').innerText = `גבייה עבור ${count} פגישות בסך כולל מע"מ: ₪${sum}`;
+            
+            document.getElementById('batchDatesListNotice').innerText = `🗓️ פירוט תאריכי טיפולים: ${datesArr.join(', ')}`;
+            
+            const draftBtn = document.getElementById('btnCreateDraft');
+            if (mode === 'WITH_RECEIPT') {
+                draftBtn.style.display = 'block';
+            } else {
+                draftBtn.style.display = 'none';
+            }
+
+            document.getElementById('batchPayModal').style.display = 'flex';
+        }
+
+        async function executeBatchPayment(isDraft = false) {
+            const mode = document.getElementById('batchPayMode').value;
+            const method = document.getElementById('batchPayMethod').value;
+            const checks = document.querySelectorAll('.pay-app-check:checked');
+
+            if (checks.length === 0) return;
+
+            const confirmBtn = document.getElementById('btnConfirmBatchPay');
+            const draftBtn = document.getElementById('btnCreateDraft');
+
+            const selectedAppIds = Array.from(checks).map(c => c.getAttribute('data-id'));
+            const firstApp = db.appointments.find(a => a["מזהה פגישה"] === selectedAppIds[0]);
+            const patName = firstApp ? firstApp["שם המטופל"] : "";
+            const patObj = db.patients.find(p => p["שם מלא"] === patName) || {};
+
+            let sum = 0;
+            let datesArr = [];
+            selectedAppIds.forEach(id => {
+                let app = db.appointments.find(a => a["מזהה פגישה"] === id);
+                if (app) {
+                    sum += Number(app["סכום לתשלום"]) || 0;
+                    let d = formatDateForInput(app["תאריך ושעה"] || app["תאריך"]);
+                    if (d) {
+                        let p = d.split('-');
+                        if (p.length === 3) datesArr.push(`${p[2]}/${p[1]}`);
+                    }
+                }
+            });
+
+            if (mode === 'WITH_RECEIPT') {
+                const gasUrl = localStorage.getItem('gas_url');
+                const morningKey = localStorage.getItem('tp_morning_key');
+                const morningSecret = localStorage.getItem('tp_morning_secret');
+
+                if (!gasUrl) return alert('נא לחבר את Google Sheets בראש המסך תחילה.');
+                if (!morningKey || !morningSecret) return alert('נא להגדיר מפתח API של Morning בלשונית Morning.');
+
+                if (isDraft) draftBtn.innerText = 'מפיק טיוטה לבדיקה... ⏳';
+                else confirmBtn.innerText = 'מנפיק מסמך סופי במורנינג... ⏳';
+                
+                draftBtn.disabled = true;
+                confirmBtn.disabled = true;
+
+                try {
+                    const res = await fetch(gasUrl, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            action: 'createMorningDoc',
+                            isDraft: isDraft,
+                            apiKey: morningKey,
+                            apiSecret: morningSecret,
+                            clientName: patName,
+                            clientPhone: patObj["טלפון"] || "",
+                            amount: sum,
+                            paymentMethod: method,
+                            description: `טיפולים בקליניקה בתאריכים: ${datesArr.join(', ')}`
+                        })
+                    });
+
+                    const responseData = await res.json();
+
+                    draftBtn.innerText = '👁️ הצג טיוטה לבדיקה (Draft)';
+                    confirmBtn.innerText = '✓ הנפק חשבונית מס קבלה סופית';
+                    draftBtn.disabled = false;
+                    confirmBtn.disabled = false;
+
+                    if (responseData.success) {
+                        if (isDraft) {
+                            // הצגת מודאל טיוטה
+                            document.getElementById('draftPdfLinkBtn').href = responseData.pdfUrl || '#';
+                            document.getElementById('batchPayModal').style.display = 'none';
+                            document.getElementById('draftPreviewModal').style.display = 'flex';
+                        } else {
+                            // הנפקה סופית
+                            const realDocNum = responseData.docNumber;
+                            const pdfUrl = responseData.pdfUrl;
+
+                            selectedAppIds.forEach(id => {
+                                let app = db.appointments.find(a => a["מזהה פגישה"] === id);
+                                if (app) {
+                                    app["אמצעי תשלום"] = method;
+                                    app["סטטוס תשלום"] = 'שולם';
+                                    app.morning_status = `חשבונית מס קבלה #${realDocNum}`;
+                                    app["מספר חשבונית"] = `חשבונית מס קבלה #${realDocNum}`;
+                                    app.pdf_url = pdfUrl;
+                                }
+                            });
+
+                            saveAndSync();
+                            document.getElementById('batchPayModal').style.display = 'none';
+                            document.getElementById('draftPreviewModal').style.display = 'none';
+
+                            if (pdfUrl) {
+                                if (confirm(`🟢 הופקה בהצלחה חשבונית מס קבלה מס' ${realDocNum} במורנינג!\n\nהאם תרצה לפתוח כעת את המסמך הסופי לצפייה/הדפסה?`)) {
+                                    window.open(pdfUrl, '_blank');
+                                }
+                            } else {
+                                alert(`🟢 הופקה בהצלחה חשבונית מס קבלה מס' ${realDocNum} במורנינג!`);
+                            }
+                        }
+                    } else {
+                        alert('🔴 שגיאה מהשרת של מורנינג: ' + responseData.message);
+                    }
+                } catch (e) {
+                    console.error(e);
+                    alert('🔴 שגיאה בתקשורת מול השרת.');
+                    draftBtn.innerText = '👁️ הצג טיוטה לבדיקה (Draft)';
+                    confirmBtn.innerText = '✓ הנפק חשבונית מס קבלה סופית';
+                    draftBtn.disabled = false;
+                    confirmBtn.disabled = false;
+                }
+            } else {
+                selectedAppIds.forEach(id => {
+                    let app = db.appointments.find(a => a["מזהה פגישה"] === id);
+                    if (app) {
+                        app["אמצעי תשלום"] = method;
+                        app["סטטוס תשלום"] = 'אישור תשלום';
+                        app.morning_status = '⚠️ נדרש חשבונית מס קבלה';
+                    }
+                });
+
+                saveAndSync();
+                document.getElementById('batchPayModal').style.display = 'none';
+                alert('🟢 התשלומים אושרו בהצלחה!');
+            }
+        }
+
+        function finalizeFromDraftModal() {
+            executeBatchPayment(false);
+        }
+
+        function renderWhatsAppDebtors() {
+            const patVal = document.getElementById('waPatientSelect')?.value || "ALL";
+            const monthVal = document.getElementById('waMonthSelect')?.value || "ALL";
+            const filteredApps = filterAppointmentsList(patVal, monthVal);
+
+            let debtors = {};
+            filteredApps.forEach(a => {
+                if (a["סטטוס תשלום"] !== 'שולם' && a["סטטוס תשלום"] !== 'אישור תשלום') {
+                    const pName = a["שם המטופל"];
+                    if (!debtors[pName]) {
+                        const pat = db.patients.find(p => p["שם מלא"] === pName) || {};
+                        debtors[pName] = { name: pName, phone: pat["טלפון"] || '', count: 0, debt: 0 };
+                    }
+                    debtors[pName].count += 1;
+                    debtors[pName].debt += Number(a["סכום לתשלום"]) || 0;
+                }
+            });
+            const keys = Object.keys(debtors);
+            if (keys.length === 0) {
+                document.getElementById('whatsappDebtorsTable').innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--success);">אין חובות פתוחים 🎉</td></tr>`;
+                return;
+            }
+            document.getElementById('whatsappDebtorsTable').innerHTML = keys.map(k => {
+                const d = debtors[k];
+                const displayPhone = formatPhoneForDisplay(d.phone);
+                return `<tr><td><b>${d.name}</b></td><td>${displayPhone}</td><td>${d.count}</td><td><b style="color:var(--danger)">₪${d.debt}</b></td><td><button class="btn-whatsapp" onclick="openWaPreviewModal('${d.name}', '${d.phone}', ${d.count}, ${d.debt})">📲 שלח הודעה</button></td></tr>`;
+            }).join('');
+        }
+
+        function openWaPreviewModal(patientName, phone, count, debt) {
+            const formattedPhone = formatPhoneForWa(phone);
+
+            const monthVal = document.getElementById('waMonthSelect')?.value || "ALL";
+            let unpaidApps = filterAppointmentsList(patientName, monthVal).filter(a => a["סטטוס תשלום"] !== 'שולם' && a["סטטוס תשלום"] !== 'אישור תשלום');
+
+            const dateList = unpaidApps.map(a => {
+                const formatted = formatDateForInput(a["תאריך ושעה"] || a["תאריך"]);
+                if (!formatted) return '';
+                let parts = formatted.split('-');
+                if (parts.length === 3) return `${parseInt(parts[2])}.${parseInt(parts[1])}`;
+                return formatted;
+            }).filter(Boolean).join(', ');
+
+            const mHebNames = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
+            let monthName = "";
+            if (unpaidApps.length > 0) {
+                let m = extractMonthFromDate(unpaidApps[0]["תאריך ושעה"] || unpaidApps[0]["תאריך"]);
+                if (m) monthName = mHebNames[parseInt(m) - 1];
+            }
+            if (!monthName) monthName = mHebNames[new Date().getMonth()];
+
+            const msg = `${patientName} שלום ,
+להלן סיכום הטיפולים בקליניקה לחודש ${monthName} : ${dateList || 'טרם עודכנו תאריכים'}
+סה"כ טיפולים לתשלום: ${count}
+סה"כ לתשלום (כולל מע"מ): ₪${debt}
+
+תודה רבה ויום מקסים! 😊
+יהודית`;
+
+            document.getElementById('waPhoneInput').value = formattedPhone;
+            document.getElementById('waMessageText').value = msg;
+            document.getElementById('waPreviewModal').style.display = 'flex';
+        }
+
+        function renderMorningTable() {
+            const patVal = document.getElementById('morningPatientSelect')?.value || "ALL";
+            const monthVal = document.getElementById('morningMonthSelect')?.value || "ALL";
+            const filteredApps = filterAppointmentsList(patVal, monthVal);
+
+            const tbody = document.getElementById('morningPaymentsTable');
+            const paidApps = filteredApps.filter(a => a["סטטוס תשלום"] === 'שולם' || a["סטטוס תשלום"] === 'אישור תשלום');
+            
+            const pendingList = paidApps.filter(a => !a.morning_status || !a.morning_status.includes('#'));
+            const issuedList = paidApps.filter(a => a.morning_status && a.morning_status.includes('#'));
+
+            document.getElementById('morningPendingCount').innerText = pendingList.length;
+            document.getElementById('morningDocsCount').innerText = issuedList.length;
+
+            if (paidApps.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted)">אין תשלומים להפקת חשבונית מס קבלה</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = paidApps.map(a => {
+                const hasDoc = a.morning_status && a.morning_status.includes('#');
+                const pdfLink = a.pdf_url ? ` <a href="${a.pdf_url}" target="_blank" style="color:#60a5fa; font-size:0.8rem;">[📄 פתח PDF]</a>` : '';
+                return `
+                    <tr>
+                        <td>${formatDateForInput(a["תאריך ושעה"] || a["תאריך"])}</td>
+                        <td><b>${a["שם המטופל"]}</b></td>
+                        <td>₪${a["סכום לתשלום"]}</td>
+                        <td>${a["אמצעי תשלום"] || 'אשראי/מזומן'}</td>
+                        <td><span class="badge ${hasDoc ? 'badge-success' : 'badge-warning'}">${hasDoc ? a.morning_status : '⚠️ נדרש חשבונית מס קבלה'}</span>${pdfLink}</td>
+                        <td>
+                            ${!hasDoc ? `<button class="btn-morning" onclick="generateMorningDoc('\${a["מזהה פגישה"]}')">🧾 הפק חשבונית מס קבלה</button>` : `<span style="color:var(--success)">✓ הופק</span>`}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function openPatientModal(patId = null) {
+            if (patId) {
+                const pat = db.patients.find(p => p["מזהה מטופל"] === patId);
+                if (pat) {
+                    document.getElementById('editPatId').value = patId;
+                    document.getElementById('patModalTitle').innerText = 'עריכת פרטי מטופל';
+                    document.getElementById('patName').value = pat["שם מלא"] || '';
+                    document.getElementById('patPhone').value = formatPhoneForDisplay(pat["טלפון"]);
+                    document.getElementById('patRate').value = pat["תעריף ברירת מחדל"] || 350;
+                }
+            } else {
+                document.getElementById('editPatId').value = '';
+                document.getElementById('patModalTitle').innerText = 'הוספת מטופל חדש';
+                document.getElementById('patName').value = '';
+                document.getElementById('patPhone').value = '';
+                document.getElementById('patRate').value = '350';
+            }
+            document.getElementById('patientModal').style.display = 'flex';
+        }
+
+        function savePatient() {
+            const editId = document.getElementById('editPatId').value;
+            const name = document.getElementById('patName').value;
+            if (!name) return alert('נא להזין שם מטופל');
+
+            const phoneVal = formatPhoneForDisplay(document.getElementById('patPhone').value);
+
+            if (editId) {
+                const pat = db.patients.find(p => p["מזהה מטופל"] === editId);
+                if (pat) {
+                    pat["שם מלא"] = name;
+                    pat["טלפון"] = phoneVal;
+                    pat["תעריף ברירת מחדל"] = Number(document.getElementById('patRate').value);
+                }
+            } else {
+                db.patients.push({
+                    "מזהה מטופל": "PAT-" + Math.floor(100 + Math.random() * 900),
+                    "שם מלא": name,
+                    "טלפון": phoneVal,
+                    "תעריף ברירת מחדל": Number(document.getElementById('patRate').value),
+                    "סטטוס": "פעיל"
+                });
+            }
+            populateFilterDropdowns();
+            saveAndSync();
+            document.getElementById('patientModal').style.display = 'none';
+        }
+
+        function openAppointmentModal(appId = null) {
+            const select = document.getElementById('appPatient');
+            select.innerHTML = '<option value="">-- בחר מטופל --</option>' + db.patients.map(p => `<option value="${p["שם מלא"]}">${p["שם מלא"]}</option>`).join('');
+
+            if (appId) {
+                const app = db.appointments.find(a => a["מזהה פגישה"] === appId);
+                if (app) {
+                    document.getElementById('editAppId').value = appId;
+                    document.getElementById('appModalTitle').innerText = '✏️ עריכת פגישה';
+                    select.value = app["שם המטופל"] || '';
+                    document.getElementById('appDate').value = formatDateForInput(app["תאריך ושעה"] || app["תאריך"]);
+                    document.getElementById('appPrice').value = app["סכום לתשלום"] || 0;
+                    document.getElementById('appStatus').value = app["סטטוס תשלום"] || 'טרם שולם';
+                    document.getElementById('appMethod').value = app["אמצעי תשלום"] || '';
+                }
+            } else {
+                document.getElementById('editAppId').value = '';
+                document.getElementById('appModalTitle').innerText = 'קביעת פגישה חדשה';
+                document.getElementById('appDate').value = new Date().toISOString().split('T')[0];
+                document.getElementById('appStatus').value = 'טרם שולם';
+                document.getElementById('appMethod').value = '';
+            }
+            document.getElementById('appointmentModal').style.display = 'flex';
+        }
+
+        function autoFillPrice() {
+            const pat = db.patients.find(p => p["שם מלא"] === document.getElementById('appPatient').value);
+            if (pat) document.getElementById('appPrice').value = pat["תעריף ברירת מחדל"] || 350;
+        }
+
+        function saveAppointment() {
+            const editId = document.getElementById('editAppId').value;
+            const patient = document.getElementById('appPatient').value;
+            const date = formatDateForInput(document.getElementById('appDate').value);
+            const price = document.getElementById('appPrice').value;
+            const status = document.getElementById('appStatus').value;
+            const method = document.getElementById('appMethod').value;
+
+            if (!patient || !date) return alert('נא למלא מטופל ותאריך');
+
+            if (editId) {
+                const app = db.appointments.find(a => a["מזהה פגישה"] === editId);
+                if (app) {
+                    app["שם המטופל"] = patient;
+                    app["תאריך ושעה"] = date;
+                    app["תאריך"] = date;
+                    app["סכום לתשלום"] = Number(price);
+                    app["סטטוס תשלום"] = status;
+                    app["אמצעי תשלום"] = method;
+                }
+            } else {
+                db.appointments.push({
+                    "מזהה פגישה": "APP-" + Date.now(),
+                    "תאריך ושעה": date,
+                    "תאריך": date,
+                    "שם המטופל": patient,
+                    "סכום לתשלום": Number(price),
+                    "סטטוס תשלום": status,
+                    "אמצעי תשלום": method,
+                    "מספר חשבונית": "לא הונפקה",
+                    "morning_status": "לא הונפקה",
+                    "pdf_url": ""
+                });
+            }
+            saveAndSync();
+            document.getElementById('appointmentModal').style.display = 'none';
+        }
+
+        function deleteAppointment(appId) {
+            if (confirm('האם למחוק פגישה זו?')) {
+                db.appointments = db.appointments.filter(a => a["מזהה פגישה"] !== appId);
+                saveAndSync();
+            }
+        }
+
+        function copyWaText() {
+            navigator.clipboard.writeText(document.getElementById('waMessageText').value).then(() => {
+                const btn = document.getElementById('btnCopyText');
+                btn.innerText = '✓ הועתק!';
+                setTimeout(() => { btn.innerText = '📋 העתק'; }, 2000);
+            });
+        }
+
+        function sendWhatsAppFromPreview() {
+            if (!isWaConnected) return alert('נא לחבר את WhatsApp תחילה (כפתור חבר/נתק).');
+            window.open(`https://wa.me/${document.getElementById('waPhoneInput').value}?text=${encodeURIComponent(document.getElementById('waMessageText').value)}`, '_blank');
+        }
+
+        function toggleWaConnection() {
+            isWaConnected = !isWaConnected;
+            const b = document.getElementById('waConnectionBadge');
+            b.className = isWaConnected ? 'badge badge-success' : 'badge badge-warning';
+            b.innerText = isWaConnected ? 'מצב: מחובר 🟢' : 'מצב: לא מחובר 🔴';
+        }
+
+        function saveAndSync() {
+            localStorage.setItem('tp_patients', JSON.stringify(db.patients));
+            localStorage.setItem('tp_appointments', JSON.stringify(db.appointments));
+            renderAll();
+            syncToCloud();
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
