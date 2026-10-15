@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>TheraPay - ניהול קליניקה</title>
-    <link href="[https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700&display=swap](https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700&display=swap)" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg-primary: #0f172a;
@@ -336,6 +336,653 @@
             .batch-actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
         }
     </style>
+
+    <script>
+        // הגדרת משתנים ופונקציות בראש הדף בצורה מוקדמת ובטוחה
+        window.appData = {
+            patients: [{ id: 1, name: "נעמי", phone: "0500000000", rate: 350 }],
+            appointments: [{ id: 1, date: "2026-10-14", clientName: "נעמי", clientPhone: "0500000000", amount: 350, status: "ממתין לתשלום", isPaid: false, paymentMethod: "ביט / פייבוקס", docNumber: "" }]
+        };
+
+        window.currentBatchSelection = { count: 0, totalAmount: 0, clientName: "", clientPhone: "", datesList: "", ids: [] };
+
+        function getAppsScriptUrl() {
+            return localStorage.getItem("APPS_SCRIPT_URL") || localStorage.getItem("scriptUrl") || "";
+        }
+
+        function closeModal(id) {
+            var el = document.getElementById(id);
+            if (el) el.style.display = "none";
+        }
+
+        function openSyncModal() {
+            var input = document.getElementById("scriptUrlInput");
+            if (input) input.value = getAppsScriptUrl();
+            var modal = document.getElementById("syncModal");
+            if (modal) modal.style.display = "flex";
+        }
+
+        function openPatientModal() {
+            var nameEl = document.getElementById("newPatName");
+            var phoneEl = document.getElementById("newPatPhone");
+            if (nameEl) nameEl.value = "";
+            if (phoneEl) phoneEl.value = "";
+            var modal = document.getElementById("addPatientModal");
+            if (modal) modal.style.display = "flex";
+        }
+
+        function openAppointmentModal() {
+            try {
+                var select = document.getElementById("newAppPatientSelect");
+                var namesSet = new Set();
+                if (window.appData && window.appData.patients) {
+                    window.appData.patients.forEach(function(p) { if (p.name && p.name.trim()) namesSet.add(p.name.trim()); });
+                }
+                if (window.appData && window.appData.appointments) {
+                    window.appData.appointments.forEach(function(a) { if (a.clientName && a.clientName.trim() && a.clientName !== "מטופל/ת") namesSet.add(a.clientName.trim()); });
+                }
+
+                if (select) {
+                    select.innerHTML = Array.from(namesSet).map(function(n) { return '<option value="' + n + '">' + n + '</option>'; }).join('');
+                }
+                var dateEl = document.getElementById("newAppDate");
+                if (dateEl) dateEl.value = new Date().toISOString().slice(0, 10);
+                autoFillAppAmount();
+            } catch (e) {
+                console.error("openAppointmentModal error:", e);
+            }
+            var modal = document.getElementById("addAppointmentModal");
+            if (modal) modal.style.display = "flex";
+        }
+
+        function autoFillAppAmount() {
+            var selectEl = document.getElementById("newAppPatientSelect");
+            if (!selectEl) return;
+            var patName = selectEl.value;
+            if (!window.appData || !window.appData.patients) return;
+            var found = window.appData.patients.find(function(p) { return (p.name || "").trim().toLowerCase() === (patName || "").trim().toLowerCase(); });
+            var amountEl = document.getElementById("newAppAmount");
+            if (found && amountEl) amountEl.value = found.rate;
+        }
+
+        function toggleDrawer() {
+            var drawer = document.getElementById("sidebarDrawer");
+            var backdrop = document.getElementById("drawerBackdrop");
+            if (drawer) drawer.classList.toggle("open");
+            if (backdrop) backdrop.classList.toggle("active");
+        }
+
+        function closeDrawer() {
+            var drawer = document.getElementById("sidebarDrawer");
+            var backdrop = document.getElementById("drawerBackdrop");
+            if (drawer) drawer.classList.remove("open");
+            if (backdrop) backdrop.classList.remove("active");
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll(".tab-section").forEach(function(tab) { tab.classList.remove("active"); });
+            var targetTab = document.getElementById("tab-" + tabId);
+            if (targetTab) targetTab.classList.add("active");
+
+            document.querySelectorAll(".nav-btn").forEach(function(btn) { btn.classList.remove("active"); });
+            var targetBtn = document.getElementById("btn-" + tabId);
+            if (targetBtn) targetBtn.classList.add("active");
+            closeDrawer();
+        }
+
+        function showToast(message, type) {
+            type = type || 'success';
+            var toast = document.getElementById("toastNotification");
+            if (!toast) {
+                toast = document.createElement("div");
+                toast.id = "toastNotification";
+                toast.style.cssText = "position: fixed; bottom: 25px; left: 50%; transform: translateX(-50%); background: #1e293b; color: #fff; padding: 12px 24px; border-radius: 30px; border: 1px solid #334155; box-shadow: 0 10px 25px rgba(0,0,0,0.5); font-size: 0.92rem; font-weight: 600; z-index: 10000; display: flex; align-items: center; gap: 8px; transition: all 0.3s ease; opacity: 0; pointer-events: none;";
+                document.body.appendChild(toast);
+            }
+            var styles = { success: '#10b981', error: '#ef4444', info: '#3b82f6' };
+            toast.style.borderColor = styles[type] || '#334155';
+            toast.style.color = styles[type] || '#fff';
+            toast.innerText = message;
+            toast.style.opacity = '1';
+            setTimeout(function() { toast.style.opacity = '0'; }, 3500);
+        }
+
+        function saveSyncConfig() {
+            var input = document.getElementById("scriptUrlInput");
+            var url = input ? input.value.trim() : "";
+
+            if (!url) {
+                showToast("⚠️ אנא הדבק את הקישור מ-Google Apps Script", "error");
+                return;
+            }
+
+            localStorage.setItem("APPS_SCRIPT_URL", url);
+            closeModal("syncModal");
+            showToast("✅ הקישור נשמר בהצלחה! מתחבר...", "success");
+            checkSyncStatus();
+        }
+
+        function checkSyncStatus() {
+            var url = getAppsScriptUrl();
+            var badgeBtn = document.getElementById("headerSyncBtn");
+            var badgeIcon = document.getElementById("syncBadgeIcon");
+            var badgeText = document.getElementById("syncBadgeText");
+            var morningStatus = document.getElementById("morningStatusText");
+
+            if (url) {
+                if (badgeBtn) badgeBtn.classList.add("connected");
+                if (badgeIcon) badgeIcon.innerText = "🟢";
+                if (badgeText) badgeText.innerText = "מסונכרן ☁️";
+                if (morningStatus) morningStatus.innerText = "מחובר ל-API 🟢";
+                var input = document.getElementById("scriptUrlInput");
+                if (input) input.value = url;
+                fetchDataFromSheets();
+            } else {
+                if (badgeBtn) badgeBtn.classList.remove("connected");
+                if (badgeIcon) badgeIcon.innerText = "☁️";
+                if (badgeText) badgeText.innerText = "סנכרון Sheets";
+                renderAll();
+            }
+        }
+
+        async function fetchDataFromSheets() {
+            var baseUrl = getAppsScriptUrl();
+            if (!baseUrl) { renderAll(); return; }
+
+            showToast("טוען נתונים מ-Google Sheets... ⏳", "info");
+            var fetchUrl = baseUrl + (baseUrl.includes("?") ? "&" : "?") + "action=getAllData&t=" + Date.now();
+
+            try {
+                var response = await fetch(fetchUrl);
+                var rawData = await response.json();
+
+                if (rawData && rawData.success) {
+                    if (rawData.patients && rawData.patients.length > 0) {
+                        window.appData.patients = rawData.patients.map(function(p, idx) {
+                            var nameVal = p["שם"] || p["שם מלא"] || p.name || p["מטופל"] || p.clientName || ("מטופל " + (idx + 1));
+                            return {
+                                id: p.id || (idx + 1),
+                                name: String(nameVal).trim(),
+                                phone: String(p["טלפון"] || p["מספר טלפון"] || p.phone || "").trim(),
+                                rate: Number(p["תעריף"]) || Number(p.rate) || 350
+                            };
+                        });
+                    }
+
+                    if (rawData.appointments && rawData.appointments.length > 0) {
+                        window.appData.appointments = rawData.appointments.map(function(a, idx) { return parseAppointmentRow(a, idx); });
+                    }
+
+                    renderAll();
+                    showToast("✅ נטענו " + window.appData.patients.length + " מטופלים ו-" + window.appData.appointments.length + " פגישות!", "success");
+                }
+            } catch (err) {
+                console.error("Fetch error:", err);
+                renderAll();
+            }
+        }
+
+        function parseAppointmentRow(rawRow, idx) {
+            var keys = Object.keys(rawRow).filter(function(k) { return k !== "id" && k !== "rowIndex"; });
+            var clientName = "", dateVal = "", amountVal = 350, statusVal = "", docNum = "";
+
+            var allVals = keys.map(function(k) { return String(rawRow[k] || "").trim(); }).filter(function(v) { return v !== ""; });
+
+            for (var i = 0; i < allVals.length; i++) {
+                var val = allVals[i];
+                if (val.startsWith("APP-")) continue;
+
+                if ((val.match(/^\d{4}-\d{2}-\d{2}$/) || val.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}$/)) && !dateVal) {
+                    dateVal = val;
+                }
+                else if (!isNaN(val) && Number(val) >= 50 && Number(val) <= 10000) {
+                    amountVal = Number(val);
+                }
+                else if (val.includes("ביט") || val.includes("פייבוקס") || val.includes("שולם") || val.includes("ממתין") || val.includes("העברה") || val.includes("אשראי")) {
+                    if (!statusVal) statusVal = val;
+                }
+                else if (val.match(/^\d{4,8}$/) && !docNum) {
+                    docNum = val;
+                }
+                else if (isNaN(val) && !val.includes("http") && !val.includes("חשבונית") && val.length >= 2) {
+                    if (!clientName) clientName = val;
+                }
+            }
+
+            if (!clientName) clientName = "מטופל/ת";
+            if (!dateVal) dateVal = "-";
+
+            var isPaid = statusVal.includes("שולם") || (docNum !== "" && docNum !== "-");
+
+            return {
+                id: rawRow.id || (idx + 1),
+                date: dateVal,
+                clientName: clientName,
+                clientPhone: getPatientPhoneByName(clientName),
+                amount: amountVal,
+                status: isPaid ? "שולם" : "ממתין לתשלום",
+                isPaid: isPaid,
+                paymentMethod: statusVal || "ביט / פייבוקס",
+                docNumber: docNum
+            };
+        }
+
+        function getPatientPhoneByName(name) {
+            var clean = (name || "").trim().toLowerCase();
+            if (!window.appData || !window.appData.patients) return "";
+            var found = window.appData.patients.find(function(p) { return (p.name || "").trim().toLowerCase() === clean; });
+            return found ? found.phone : "";
+        }
+
+        function renderAll() {
+            try {
+                populateDropdownFilters();
+                renderDashboard();
+                renderPatients();
+                renderAppointments();
+                renderPatientPayments();
+                renderWhatsAppDebtors();
+                renderMorningTable();
+                renderStats();
+            } catch(e) {
+                console.error("renderAll error:", e);
+            }
+        }
+
+        function renderDashboard() {
+            var totalPaid = 0, totalDebt = 0;
+            if (window.appData && window.appData.appointments) {
+                window.appData.appointments.forEach(function(app) {
+                    if (app.isPaid) totalPaid += app.amount;
+                    else totalDebt += app.amount;
+                });
+            }
+
+            var elActive = document.getElementById("statActivePatients");
+            var elApps = document.getElementById("statThisMonthApps");
+            var elRev = document.getElementById("statMonthRevenue");
+            var elPend = document.getElementById("statPendingPayments");
+
+            if (elActive && window.appData && window.appData.patients) elActive.innerText = window.appData.patients.length;
+            if (elApps && window.appData && window.appData.appointments) elApps.innerText = window.appData.appointments.length;
+            if (elRev) elRev.innerText = "₪" + totalPaid;
+            if (elPend) elPend.innerText = "₪" + totalDebt;
+        }
+
+        function renderPatients() {
+            var tbody = document.getElementById("patientsTable");
+            if (!tbody || !window.appData || !window.appData.patients) return;
+
+            var filterEl = document.getElementById("patListFilter");
+            var filterVal = (filterEl ? filterEl.value : "ALL").trim().toLowerCase();
+            var list = window.appData.patients;
+            if (filterVal !== "all") list = list.filter(function(p) { return (p.name || "").trim().toLowerCase() === filterVal; });
+
+            tbody.innerHTML = list.map(function(p) {
+                return '<tr><td>' + p.id + '</td><td><strong>' + p.name + '</strong></td><td>' + (p.phone || '-') + '</td><td>₪' + p.rate + '</td><td><span class="badge badge-success">פעיל</span></td></tr>';
+            }).join('');
+        }
+
+        function renderAppointments() {
+            var tbody = document.getElementById("appointmentsTable");
+            if (!tbody || !window.appData || !window.appData.appointments) return;
+
+            var filterEl = document.getElementById("appPatientFilter");
+            var filterVal = (filterEl ? filterEl.value : "ALL").trim().toLowerCase();
+            var list = window.appData.appointments;
+            if (filterVal !== "all") list = list.filter(function(a) { return (a.clientName || "").trim().toLowerCase() === filterVal; });
+
+            tbody.innerHTML = list.map(function(a) {
+                return '<tr><td>' + a.date + '</td><td><strong>' + a.clientName + '</strong></td><td>₪' + a.amount + '</td><td><span class="badge ' + (a.isPaid ? 'badge-success' : 'badge-warning') + '">' + a.status + '</span></td><td>' + a.paymentMethod + '</td><td><button class="btn-action" type="button" style="font-size:0.75rem; padding:4px 8px;" onclick="openBatchPayModal()">גבייה</button></td></tr>';
+            }).join('');
+        }
+
+        function renderPatientPayments() {
+            var tbody = document.getElementById("patientPaymentsTable");
+            if (!tbody || !window.appData || !window.appData.appointments) return;
+
+            var filterEl = document.getElementById("paymentPatientSelect");
+            var filterVal = (filterEl ? filterEl.value : "ALL").trim().toLowerCase();
+            var list = window.appData.appointments;
+            if (filterVal !== "all") {
+                list = list.filter(function(a) { return (a.clientName || "").trim().toLowerCase() === filterVal; });
+            }
+
+            var totalVal = 0, totalPaid = 0, totalDebt = 0;
+            list.forEach(function(a) {
+                totalVal += a.amount;
+                if (a.isPaid) totalPaid += a.amount;
+                else totalDebt += a.amount;
+            });
+
+            var elVal = document.getElementById("payTotalValue");
+            var elPaid = document.getElementById("payTotalPaid");
+            var elDebt = document.getElementById("payTotalDebt");
+
+            if (elVal) elVal.innerText = "₪" + totalVal;
+            if (elPaid) elPaid.innerText = "₪" + totalPaid;
+            if (elDebt) elDebt.innerText = "₪" + totalDebt;
+
+            tbody.innerHTML = list.map(function(p) {
+                var docText = p.docNumber ? ('חשבונית #' + p.docNumber) : '-';
+                return '<tr><td style="text-align:center;"><input type="checkbox" class="pay-chk" ' + (!p.isPaid ? 'checked' : '') + ' data-id="' + p.id + '" onchange="updateBatchSummary()"></td><td>' + p.date + '</td><td><strong>' + p.clientName + '</strong></td><td>₪' + p.amount + '</td><td><span class="badge ' + (p.isPaid ? 'badge-success' : 'badge-warning') + '">' + p.status + '</span></td><td><strong>' + docText + '</strong></td></tr>';
+            }).join('');
+
+            updateBatchSummary();
+        }
+
+        function toggleAllPayCheckboxes(master) {
+            document.querySelectorAll(".pay-chk").forEach(function(c) { c.checked = master.checked; });
+            updateBatchSummary();
+        }
+
+        function updateBatchSummary() {
+            var checkedChks = document.querySelectorAll(".pay-chk:checked");
+            var checkedIds = Array.from(checkedChks).map(function(c) { return c.getAttribute("data-id"); });
+            var selectedApps = (window.appData && window.appData.appointments) ? window.appData.appointments.filter(function(a) { return checkedIds.includes(String(a.id)); }) : [];
+
+            if (selectedApps.length > 0) {
+                var total = selectedApps.reduce(function(sum, a) { return sum + a.amount; }, 0);
+                var name = selectedApps[0].clientName;
+                var phone = selectedApps[0].clientPhone;
+                var dates = selectedApps.map(function(a) { return a.date ? a.date.slice(5).replace('-', '/') : ''; }).join(', ');
+
+                window.currentBatchSelection = {
+                    ids: checkedIds,
+                    clientName: name,
+                    clientPhone: phone,
+                    totalAmount: total,
+                    count: selectedApps.length,
+                    datesList: dates
+                };
+            } else {
+                window.currentBatchSelection = { ids: [], clientName: "", clientPhone: "", totalAmount: 0, count: 0, datesList: "" };
+            }
+
+            var sumEl = document.getElementById("batchPaySummary");
+            if (sumEl) sumEl.innerText = "נבחרו " + window.currentBatchSelection.count + " פגישות | סה\"כ לתשלום: ₪" + window.currentBatchSelection.totalAmount;
+        }
+
+        function openBatchPayModal() {
+            if (!window.currentBatchSelection || window.currentBatchSelection.count === 0) {
+                showToast("⚠️ אנא בחר פגישות לגבייה מהטבלה", "error");
+                return;
+            }
+            var modal = document.getElementById("batchPayModal");
+            var desc = document.getElementById("batchModalDesc");
+            var notice = document.getElementById("batchDatesListNotice");
+            var methodSelect = document.getElementById("batchPayMethod");
+
+            var lastMethod = localStorage.getItem("lastPaymentMethod");
+            if (lastMethod && methodSelect) methodSelect.value = lastMethod;
+
+            if (desc) desc.innerText = "גבייה עבור " + window.currentBatchSelection.count + " פגישות בסך כולל מע\"מ: ₪" + window.currentBatchSelection.totalAmount;
+            if (notice) notice.innerText = "תאריכי פגישות: " + window.currentBatchSelection.datesList + " (" + window.currentBatchSelection.clientName + ")";
+            if (modal) modal.style.display = "flex";
+        }
+
+        async function executeBatchPayment(isDraft) {
+            var appScriptUrl = getAppsScriptUrl();
+            if (!appScriptUrl) {
+                showToast("⚠️ כתובת Google Apps Script אינה מוגדרת", "error");
+                openSyncModal();
+                return;
+            }
+
+            var paymentMethod = document.getElementById("batchPayMethod").value;
+            localStorage.setItem("lastPaymentMethod", paymentMethod);
+
+            var btnDraft = document.getElementById("btnCreateDraft");
+            var btnFinal = document.getElementById("btnConfirmBatchPay");
+
+            if (isDraft && btnDraft) { btnDraft.disabled = true; btnDraft.innerText = "מפיק טיוטה... ⏳"; }
+            else if (!isDraft && btnFinal) { btnFinal.disabled = true; btnFinal.innerText = "מנפיק חשבונית... ⏳"; }
+
+            var payload = {
+                action: "createMorningDoc",
+                clientName: window.currentBatchSelection.clientName,
+                clientPhone: window.currentBatchSelection.clientPhone,
+                amount: window.currentBatchSelection.totalAmount,
+                description: "פירוט תאריכי טיפולים: " + window.currentBatchSelection.datesList,
+                paymentMethod: paymentMethod,
+                datesList: window.currentBatchSelection.datesList,
+                isDraft: isDraft
+            };
+
+            try {
+                var response = await fetch(appScriptUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "text/plain;charset=utf-8" },
+                    body: JSON.stringify(payload)
+                });
+
+                var result = await response.json();
+
+                if (result.success) {
+                    closeModal("batchPayModal");
+                    if (result.pdfUrl) window.open(result.pdfUrl, "_blank");
+
+                    if (!isDraft) {
+                        window.appData.appointments.forEach(function(a) {
+                            if (window.currentBatchSelection.ids.includes(String(a.id))) {
+                                a.isPaid = true;
+                                a.status = "שולם";
+                                a.docNumber = result.docNumber;
+                            }
+                        });
+                        renderAll();
+                        setTimeout(fetchDataFromSheets, 1500);
+                    }
+
+                    showToast(isDraft ? "✅ טיוטה הופקה ונפתחה!" : ("🎉 חשבונית מס קבלה מס' " + result.docNumber + " הונפקה ונשמרה ב-Google Sheets!"), "success");
+                } else {
+                    showToast("❌ שגיאה: " + (result.message || "נכשלה יצירת המסמך"), "error");
+                }
+            } catch (err) {
+                showToast("❌ תקלה בתקשורת: " + err.message, "error");
+            } finally {
+                if (btnDraft) { btnDraft.disabled = false; btnDraft.innerText = "👁️ הפק טיוטה לבדיקה (Draft)"; }
+                if (btnFinal) { btnFinal.disabled = false; btnFinal.innerText = "✓ הנפק חשבונית מס קבלה סופית"; }
+            }
+        }
+
+        async function saveNewPatient() {
+            var name = document.getElementById("newPatName").value.trim();
+            var phone = document.getElementById("newPatPhone").value.trim();
+            var rate = Number(document.getElementById("newPatRate").value) || 350;
+
+            if (!name) { showToast("⚠️ אנא הזן שם מטופל", "error"); return; }
+
+            closeModal("addPatientModal");
+            showToast("שומר מטופל ב-Google Sheets... ⏳", "info");
+
+            window.appData.patients.push({ id: window.appData.patients.length + 1, name: name, phone: phone, rate: rate });
+            renderAll();
+
+            var url = getAppsScriptUrl();
+            if (url) {
+                try {
+                    await fetch(url, {
+                        method: "POST",
+                        headers: { "Content-Type": "text/plain;charset=utf-8" },
+                        body: JSON.stringify({ action: "addPatient", name: name, phone: phone, rate: rate })
+                    });
+                } catch(e){}
+            }
+            showToast("✅ מטופל חדש נשמר בהצלחה!", "success");
+        }
+
+        function saveNewAppointment() {
+            closeModal("addAppointmentModal");
+
+            var selectEl = document.getElementById("newAppPatientSelect");
+            var clientName = selectEl ? selectEl.value.trim() : "";
+            var dateEl = document.getElementById("newAppDate");
+            var dateVal = (dateEl && dateEl.value) ? dateEl.value : new Date().toISOString().slice(0, 10);
+            var amountEl = document.getElementById("newAppAmount");
+            var amountVal = amountEl ? (Number(amountEl.value) || 350) : 350;
+            var methodEl = document.getElementById("newAppPayMethod");
+            var methodVal = methodEl ? methodEl.value : "ביט / פייבוקס";
+
+            if (!clientName) {
+                showToast("⚠️ אנא בחר מטופל", "error");
+                return;
+            }
+
+            showToast("קובע פגישה ב-Google Sheets... ⏳", "info");
+
+            var clientPhone = getPatientPhoneByName(clientName);
+            window.appData.appointments.push({
+                id: window.appData.appointments.length + 1,
+                date: dateVal,
+                clientName: clientName,
+                clientPhone: clientPhone,
+                amount: amountVal,
+                status: "ממתין לתשלום",
+                isPaid: false,
+                paymentMethod: methodVal,
+                docNumber: ""
+            });
+
+            renderAll();
+
+            var url = getAppsScriptUrl();
+            if (url) {
+                fetch(url, {
+                    method: "POST",
+                    headers: { "Content-Type": "text/plain;charset=utf-8" },
+                    body: JSON.stringify({ action: "addAppointment", clientName: clientName, date: dateVal, amount: amountVal, paymentMethod: methodVal })
+                })
+                .then(function(res) { return res.json(); })
+                .then(function() {
+                    showToast("✅ פגישה נקבעה ונשמרה ב-Sheets!", "success");
+                    setTimeout(fetchDataFromSheets, 1000);
+                })
+                .catch(function(err) {
+                    showToast("✅ פגישה נקבעה!", "success");
+                });
+            } else {
+                showToast("✅ פגישה נקבעה!", "success");
+            }
+        }
+
+        function renderWhatsAppDebtors() {
+            var tbody = document.getElementById("whatsappDebtorsTable");
+            if (!tbody || !window.appData || !window.appData.appointments) return;
+            var debtors = window.appData.appointments.filter(function(a) { return !a.isPaid; });
+            tbody.innerHTML = debtors.map(function(d) {
+                return '<tr><td><strong>' + d.clientName + '</strong></td><td>' + (d.clientPhone || '-') + '</td><td>פגישה בתאריך ' + d.date + '</td><td style="color:var(--danger); font-weight:700;">₪' + d.amount + '</td><td><button class="btn-whatsapp" type="button" style="font-size:0.75rem; padding:4px 8px;" onclick="openWaPreview(\'' + d.clientName + '\', \'' + d.clientPhone + '\', ' + d.amount + ')">📲 שלח תזכורת</button></td></tr>';
+            }).join('');
+        }
+
+        function renderMorningTable() {
+            var tbody = document.getElementById("morningPaymentsTable");
+            if (!tbody || !window.appData || !window.appData.appointments) return;
+            var elPend = document.getElementById("morningPendingCount");
+            var elDocs = document.getElementById("morningDocsCount");
+
+            if (elPend) elPend.innerText = window.appData.appointments.filter(function(a) { return !a.docNumber; }).length;
+            if (elDocs) elDocs.innerText = window.appData.appointments.filter(function(a) { return a.docNumber; }).length;
+
+            tbody.innerHTML = window.appData.appointments.map(function(a) {
+                return '<tr><td>' + a.date + '</td><td><strong>' + a.clientName + '</strong></td><td>₪' + a.amount + '</td><td>' + a.paymentMethod + '</td><td><span class="badge ' + (a.docNumber ? 'badge-success' : 'badge-warning') + '">' + (a.docNumber ? ('הונפקה #' + a.docNumber) : 'טרם הונפק') + '</span></td><td><button class="btn-morning" type="button" style="font-size:0.75rem; padding:4px 8px;" onclick="openBatchPayModal()">🧾 הנפק חשבונית</button></td></tr>';
+            }).join('');
+        }
+
+        function renderStats() {
+            var totalPaid = 0, totalDebt = 0;
+            if (window.appData && window.appData.appointments) {
+                window.appData.appointments.forEach(function(a) {
+                    if (a.isPaid) totalPaid += a.amount;
+                    else totalDebt += a.amount;
+                });
+            }
+            var elPaid = document.getElementById("reportPaidTotal");
+            var elDebt = document.getElementById("reportDebtTotal");
+            if (elPaid) elPaid.innerText = "₪" + totalPaid;
+            if (elDebt) elDebt.innerText = "₪" + totalDebt;
+        }
+
+        function populateDropdownFilters() {
+            var selectIds = ['patListFilter', 'appPatientFilter', 'paymentPatientSelect'];
+            var savedValues = {};
+
+            selectIds.forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) savedValues[id] = el.value;
+            });
+
+            var uniqueNames = new Set();
+            if (window.appData && window.appData.patients) {
+                window.appData.patients.forEach(function(p) { if (p.name && p.name.trim()) uniqueNames.add(p.name.trim()); });
+            }
+            if (window.appData && window.appData.appointments) {
+                window.appData.appointments.forEach(function(a) { if (a.clientName && a.clientName.trim() && a.clientName !== "מטופל/ת") uniqueNames.add(a.clientName.trim()); });
+            }
+
+            var sortedNames = Array.from(uniqueNames).sort(function(a, b) { return a.localeCompare(b, 'he'); });
+            var optionsHtml = '<option value="ALL">-- כל המטופלים --</option>' + sortedNames.map(function(n) { return '<option value="' + n + '">' + n + '</option>'; }).join('');
+
+            selectIds.forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) {
+                    el.innerHTML = optionsHtml;
+                    if (savedValues[id] && (savedValues[id] === "ALL" || uniqueNames.has(savedValues[id]))) {
+                        el.value = savedValues[id];
+                    }
+                }
+            });
+        }
+
+        function toggleWaConnection() {
+            var badge = document.getElementById("waConnectionBadge");
+            if (badge) {
+                var isConn = badge.classList.contains("badge-success");
+                badge.className = isConn ? "badge badge-warning" : "badge badge-success";
+                badge.innerText = isConn ? "מצב: לא מחובר 🔴" : "מצב: מחובר 🟢";
+            }
+        }
+
+        function openWaPreview(name, phone, amount) {
+            var phoneEl = document.getElementById("waPhoneInput");
+            var textEl = document.getElementById("waMessageText");
+            if (phoneEl) phoneEl.value = phone || "";
+            if (textEl) textEl.value = "שלום " + name + ", תזכורת ידידותית לגבי יתרת חוב בסך ₪" + amount + " עבור הטיפול/ים בקליניקה. ניתן לשלם בביט/פייבוקס/העברה. תודה!";
+            var modal = document.getElementById("waPreviewModal");
+            if (modal) modal.style.display = "flex";
+        }
+
+        function openMorningConfigModal() {
+            var modal = document.getElementById("morningConfigModal");
+            if (modal) modal.style.display = "flex";
+        }
+
+        function saveMorningConfig() {
+            closeModal("morningConfigModal");
+            checkSyncStatus();
+        }
+
+        function copyWaText() {
+            var text = document.getElementById("waMessageText");
+            if (text) { navigator.clipboard.writeText(text.value); showToast("📋 הטקסט הועתק!", "success"); }
+        }
+
+        function sendWhatsAppFromPreview() {
+            var phoneEl = document.getElementById("waPhoneInput");
+            var textEl = document.getElementById("waMessageText");
+            var phone = phoneEl ? phoneEl.value : "";
+            var text = textEl ? textEl.value : "";
+            if (phone) window.open("https://wa.me/" + phone.replace(/[^0-9]/g, '') + "?text=" + encodeURIComponent(text), "_blank");
+        }
+
+        document.addEventListener("DOMContentLoaded", function() {
+            try {
+                checkSyncStatus();
+            } catch(e) {
+                console.error("Initialization error:", e);
+            }
+        });
+    </script>
 </head>
 <body>
 
@@ -606,657 +1253,11 @@
         <div class="modal-content">
             <div class="modal-title">☁️ חיבור ל-Google Sheets</div>
             <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">הדבק כאן את קישור ה-Apps Script המסתיים ב-exec:</p>
-            <div class="form-group"><input type="text" id="scriptUrlInput" placeholder="[https://script.google.com/macros/s/.../exec](https://script.google.com/macros/s/.../exec)"></div>
+            <div class="form-group"><input type="text" id="scriptUrlInput" placeholder="https://script.google.com/macros/s/.../exec"></div>
             <button class="btn-primary-action" type="button" style="width:100%; margin-bottom:8px;" onclick="saveSyncConfig()">שמור והתחבר</button>
             <button class="btn-action" type="button" style="width:100%; background:var(--border-color);" onclick="closeModal('syncModal')">ביטול</button>
         </div>
     </div>
 
-    <script>
-        // הגדרת פונקציות גלובליות מפורשת בחלון הדפדפן כדי למנוע ReferenceError
-        window.appData = {
-            patients: [{ id: 1, name: "נעמי", phone: "0500000000", rate: 350 }],
-            appointments: [{ id: 1, date: "2026-10-14", clientName: "נעמי", clientPhone: "0500000000", amount: 350, status: "ממתין לתשלום", isPaid: false, paymentMethod: "ביט / פייבוקס", docNumber: "" }]
-        };
-
-        window.currentBatchSelection = { count: 0, totalAmount: 0, clientName: "", clientPhone: "", datesList: "", ids: [] };
-
-        window.getAppsScriptUrl = function() {
-            return localStorage.getItem("APPS_SCRIPT_URL") || localStorage.getItem("scriptUrl") || "";
-        };
-
-        window.closeModal = function(id) {
-            var el = document.getElementById(id);
-            if (el) el.style.display = "none";
-        };
-
-        window.openSyncModal = function() {
-            var input = document.getElementById("scriptUrlInput");
-            if (input) input.value = window.getAppsScriptUrl();
-            var modal = document.getElementById("syncModal");
-            if (modal) modal.style.display = "flex";
-        };
-
-        window.openPatientModal = function() {
-            var nameEl = document.getElementById("newPatName");
-            var phoneEl = document.getElementById("newPatPhone");
-            if (nameEl) nameEl.value = "";
-            if (phoneEl) phoneEl.value = "";
-            var modal = document.getElementById("addPatientModal");
-            if (modal) modal.style.display = "flex";
-        };
-
-        window.openAppointmentModal = function() {
-            try {
-                var select = document.getElementById("newAppPatientSelect");
-                var namesSet = new Set();
-                if (window.appData && window.appData.patients) {
-                    window.appData.patients.forEach(function(p) { if (p.name && p.name.trim()) namesSet.add(p.name.trim()); });
-                }
-                if (window.appData && window.appData.appointments) {
-                    window.appData.appointments.forEach(function(a) { if (a.clientName && a.clientName.trim() && a.clientName !== "מטופל/ת") namesSet.add(a.clientName.trim()); });
-                }
-
-                if (select) {
-                    select.innerHTML = Array.from(namesSet).map(function(n) { return '<option value="' + n + '">' + n + '</option>'; }).join('');
-                }
-                var dateEl = document.getElementById("newAppDate");
-                if (dateEl) dateEl.value = new Date().toISOString().slice(0, 10);
-                window.autoFillAppAmount();
-            } catch (e) {
-                console.error("openAppointmentModal error:", e);
-            }
-            var modal = document.getElementById("addAppointmentModal");
-            if (modal) modal.style.display = "flex";
-        };
-
-        window.autoFillAppAmount = function() {
-            var selectEl = document.getElementById("newAppPatientSelect");
-            if (!selectEl) return;
-            var patName = selectEl.value;
-            if (!window.appData || !window.appData.patients) return;
-            var found = window.appData.patients.find(function(p) { return (p.name || "").trim().toLowerCase() === (patName || "").trim().toLowerCase(); });
-            var amountEl = document.getElementById("newAppAmount");
-            if (found && amountEl) amountEl.value = found.rate;
-        };
-
-        window.showToast = function(message, type) {
-            type = type || 'success';
-            var toast = document.getElementById("toastNotification");
-            if (!toast) {
-                toast = document.createElement("div");
-                toast.id = "toastNotification";
-                toast.style.cssText = "position: fixed; bottom: 25px; left: 50%; transform: translateX(-50%); background: #1e293b; color: #fff; padding: 12px 24px; border-radius: 30px; border: 1px solid #334155; box-shadow: 0 10px 25px rgba(0,0,0,0.5); font-size: 0.92rem; font-weight: 600; z-index: 10000; display: flex; align-items: center; gap: 8px; transition: all 0.3s ease; opacity: 0; pointer-events: none;";
-                document.body.appendChild(toast);
-            }
-            var styles = { success: '#10b981', error: '#ef4444', info: '#3b82f6' };
-            toast.style.borderColor = styles[type] || '#334155';
-            toast.style.color = styles[type] || '#fff';
-            toast.innerText = message;
-            toast.style.opacity = '1';
-            setTimeout(function() { toast.style.opacity = '0'; }, 3500);
-        };
-
-        window.saveSyncConfig = function() {
-            var input = document.getElementById("scriptUrlInput");
-            var url = input ? input.value.trim() : "";
-
-            if (!url) {
-                window.showToast("⚠️ אנא הדבק את הקישור מ-Google Apps Script", "error");
-                return;
-            }
-
-            localStorage.setItem("APPS_SCRIPT_URL", url);
-            window.closeModal("syncModal");
-            window.showToast("✅ הקישור נשמר בהצלחה! מתחבר...", "success");
-            window.checkSyncStatus();
-        };
-
-        window.checkSyncStatus = function() {
-            var url = window.getAppsScriptUrl();
-            var badgeBtn = document.getElementById("headerSyncBtn");
-            var badgeIcon = document.getElementById("syncBadgeIcon");
-            var badgeText = document.getElementById("syncBadgeText");
-            var morningStatus = document.getElementById("morningStatusText");
-
-            if (url) {
-                if (badgeBtn) badgeBtn.classList.add("connected");
-                if (badgeIcon) badgeIcon.innerText = "🟢";
-                if (badgeText) badgeText.innerText = "מסונכרן ☁️";
-                if (morningStatus) morningStatus.innerText = "מחובר ל-API 🟢";
-                var input = document.getElementById("scriptUrlInput");
-                if (input) input.value = url;
-                window.fetchDataFromSheets();
-            } else {
-                if (badgeBtn) badgeBtn.classList.remove("connected");
-                if (badgeIcon) badgeIcon.innerText = "☁️";
-                if (badgeText) badgeText.innerText = "סנכרון Sheets";
-                window.renderAll();
-            }
-        };
-
-        window.fetchDataFromSheets = async function() {
-            var baseUrl = window.getAppsScriptUrl();
-            if (!baseUrl) { window.renderAll(); return; }
-
-            window.showToast("טוען נתונים מ-Google Sheets... ⏳", "info");
-            var fetchUrl = baseUrl + (baseUrl.includes("?") ? "&" : "?") + "action=getAllData&t=" + Date.now();
-
-            try {
-                var response = await fetch(fetchUrl);
-                var rawData = await response.json();
-
-                if (rawData && rawData.success) {
-                    if (rawData.patients && rawData.patients.length > 0) {
-                        window.appData.patients = rawData.patients.map(function(p, idx) {
-                            var nameVal = p["שם"] || p["שם מלא"] || p.name || p["מטופל"] || p.clientName || ("מטופל " + (idx + 1));
-                            return {
-                                id: p.id || (idx + 1),
-                                name: String(nameVal).trim(),
-                                phone: String(p["טלפון"] || p["מספר טלפון"] || p.phone || "").trim(),
-                                rate: Number(p["תעריף"]) || Number(p.rate) || 350
-                            };
-                        });
-                    }
-
-                    if (rawData.appointments && rawData.appointments.length > 0) {
-                        window.appData.appointments = rawData.appointments.map(function(a, idx) { return window.parseAppointmentRow(a, idx); });
-                    }
-
-                    window.renderAll();
-                    window.showToast("✅ נטענו " + window.appData.patients.length + " מטופלים ו-" + window.appData.appointments.length + " פגישות!", "success");
-                }
-            } catch (err) {
-                console.error("Fetch error:", err);
-                window.renderAll();
-            }
-        };
-
-        window.parseAppointmentRow = function(rawRow, idx) {
-            var keys = Object.keys(rawRow).filter(function(k) { return k !== "id" && k !== "rowIndex"; });
-            var clientName = "", dateVal = "", amountVal = 350, statusVal = "", docNum = "";
-
-            var allVals = keys.map(function(k) { return String(rawRow[k] || "").trim(); }).filter(function(v) { return v !== ""; });
-
-            for (var i = 0; i < allVals.length; i++) {
-                var val = allVals[i];
-                if (val.startsWith("APP-")) continue;
-
-                if ((val.match(/^\d{4}-\d{2}-\d{2}$/) || val.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}$/)) && !dateVal) {
-                    dateVal = val;
-                }
-                else if (!isNaN(val) && Number(val) >= 50 && Number(val) <= 10000) {
-                    amountVal = Number(val);
-                }
-                else if (val.includes("ביט") || val.includes("פייבוקס") || val.includes("שולם") || val.includes("ממתין") || val.includes("העברה") || val.includes("אשראי")) {
-                    if (!statusVal) statusVal = val;
-                }
-                else if (val.match(/^\d{4,8}$/) && !docNum) {
-                    docNum = val;
-                }
-                else if (isNaN(val) && !val.includes("http") && !val.includes("חשבונית") && val.length >= 2) {
-                    if (!clientName) clientName = val;
-                }
-            }
-
-            if (!clientName) clientName = "מטופל/ת";
-            if (!dateVal) dateVal = "-";
-
-            var isPaid = statusVal.includes("שולם") || (docNum !== "" && docNum !== "-");
-
-            return {
-                id: rawRow.id || (idx + 1),
-                date: dateVal,
-                clientName: clientName,
-                clientPhone: window.getPatientPhoneByName(clientName),
-                amount: amountVal,
-                status: isPaid ? "שולם" : "ממתין לתשלום",
-                isPaid: isPaid,
-                paymentMethod: statusVal || "ביט / פייבוקס",
-                docNumber: docNum
-            };
-        };
-
-        window.getPatientPhoneByName = function(name) {
-            var clean = (name || "").trim().toLowerCase();
-            if (!window.appData || !window.appData.patients) return "";
-            var found = window.appData.patients.find(function(p) { return (p.name || "").trim().toLowerCase() === clean; });
-            return found ? found.phone : "";
-        };
-
-        window.renderAll = function() {
-            try {
-                window.populateDropdownFilters();
-                window.renderDashboard();
-                window.renderPatients();
-                window.renderAppointments();
-                window.renderPatientPayments();
-                window.renderWhatsAppDebtors();
-                window.renderMorningTable();
-                window.renderStats();
-            } catch(e) {
-                console.error("renderAll error:", e);
-            }
-        };
-
-        window.renderDashboard = function() {
-            var totalPaid = 0, totalDebt = 0;
-            if (window.appData && window.appData.appointments) {
-                window.appData.appointments.forEach(function(app) {
-                    if (app.isPaid) totalPaid += app.amount;
-                    else totalDebt += app.amount;
-                });
-            }
-
-            var elActive = document.getElementById("statActivePatients");
-            var elApps = document.getElementById("statThisMonthApps");
-            var elRev = document.getElementById("statMonthRevenue");
-            var elPend = document.getElementById("statPendingPayments");
-
-            if (elActive && window.appData && window.appData.patients) elActive.innerText = window.appData.patients.length;
-            if (elApps && window.appData && window.appData.appointments) elApps.innerText = window.appData.appointments.length;
-            if (elRev) elRev.innerText = "₪" + totalPaid;
-            if (elPend) elPend.innerText = "₪" + totalDebt;
-        };
-
-        window.renderPatients = function() {
-            var tbody = document.getElementById("patientsTable");
-            if (!tbody || !window.appData || !window.appData.patients) return;
-
-            var filterEl = document.getElementById("patListFilter");
-            var filterVal = (filterEl ? filterEl.value : "ALL").trim().toLowerCase();
-            var list = window.appData.patients;
-            if (filterVal !== "all") list = list.filter(function(p) { return (p.name || "").trim().toLowerCase() === filterVal; });
-
-            tbody.innerHTML = list.map(function(p) {
-                return '<tr><td>' + p.id + '</td><td><strong>' + p.name + '</strong></td><td>' + (p.phone || '-') + '</td><td>₪' + p.rate + '</td><td><span class="badge badge-success">פעיל</span></td></tr>';
-            }).join('');
-        };
-
-        window.renderAppointments = function() {
-            var tbody = document.getElementById("appointmentsTable");
-            if (!tbody || !window.appData || !window.appData.appointments) return;
-
-            var filterEl = document.getElementById("appPatientFilter");
-            var filterVal = (filterEl ? filterEl.value : "ALL").trim().toLowerCase();
-            var list = window.appData.appointments;
-            if (filterVal !== "all") list = list.filter(function(a) { return (a.clientName || "").trim().toLowerCase() === filterVal; });
-
-            tbody.innerHTML = list.map(function(a) {
-                return '<tr><td>' + a.date + '</td><td><strong>' + a.clientName + '</strong></td><td>₪' + a.amount + '</td><td><span class="badge ' + (a.isPaid ? 'badge-success' : 'badge-warning') + '">' + a.status + '</span></td><td>' + a.paymentMethod + '</td><td><button class="btn-action" type="button" style="font-size:0.75rem; padding:4px 8px;" onclick="openBatchPayModal()">גבייה</button></td></tr>';
-            }).join('');
-        };
-
-        window.renderPatientPayments = function() {
-            var tbody = document.getElementById("patientPaymentsTable");
-            if (!tbody || !window.appData || !window.appData.appointments) return;
-
-            var filterEl = document.getElementById("paymentPatientSelect");
-            var filterVal = (filterEl ? filterEl.value : "ALL").trim().toLowerCase();
-            var list = window.appData.appointments;
-            if (filterVal !== "all") {
-                list = list.filter(function(a) { return (a.clientName || "").trim().toLowerCase() === filterVal; });
-            }
-
-            var totalVal = 0, totalPaid = 0, totalDebt = 0;
-            list.forEach(function(a) {
-                totalVal += a.amount;
-                if (a.isPaid) totalPaid += a.amount;
-                else totalDebt += a.amount;
-            });
-
-            var elVal = document.getElementById("payTotalValue");
-            var elPaid = document.getElementById("payTotalPaid");
-            var elDebt = document.getElementById("payTotalDebt");
-
-            if (elVal) elVal.innerText = "₪" + totalVal;
-            if (elPaid) elPaid.innerText = "₪" + totalPaid;
-            if (elDebt) elDebt.innerText = "₪" + totalDebt;
-
-            tbody.innerHTML = list.map(function(p) {
-                var docText = p.docNumber ? ('חשבונית #' + p.docNumber) : '-';
-                return '<tr><td style="text-align:center;"><input type="checkbox" class="pay-chk" ' + (!p.isPaid ? 'checked' : '') + ' data-id="' + p.id + '" onchange="updateBatchSummary()"></td><td>' + p.date + '</td><td><strong>' + p.clientName + '</strong></td><td>₪' + p.amount + '</td><td><span class="badge ' + (p.isPaid ? 'badge-success' : 'badge-warning') + '">' + p.status + '</span></td><td><strong>' + docText + '</strong></td></tr>';
-            }).join('');
-
-            window.updateBatchSummary();
-        };
-
-        window.toggleAllPayCheckboxes = function(master) {
-            document.querySelectorAll(".pay-chk").forEach(function(c) { c.checked = master.checked; });
-            window.updateBatchSummary();
-        };
-
-        window.updateBatchSummary = function() {
-            var checkedChks = document.querySelectorAll(".pay-chk:checked");
-            var checkedIds = Array.from(checkedChks).map(function(c) { return c.getAttribute("data-id"); });
-            var selectedApps = (window.appData && window.appData.appointments) ? window.appData.appointments.filter(function(a) { return checkedIds.includes(String(a.id)); }) : [];
-
-            if (selectedApps.length > 0) {
-                var total = selectedApps.reduce(function(sum, a) { return sum + a.amount; }, 0);
-                var name = selectedApps[0].clientName;
-                var phone = selectedApps[0].clientPhone;
-                var dates = selectedApps.map(function(a) { return a.date ? a.date.slice(5).replace('-', '/') : ''; }).join(', ');
-
-                window.currentBatchSelection = {
-                    ids: checkedIds,
-                    clientName: name,
-                    clientPhone: phone,
-                    totalAmount: total,
-                    count: selectedApps.length,
-                    datesList: dates
-                };
-            } else {
-                window.currentBatchSelection = { ids: [], clientName: "", clientPhone: "", totalAmount: 0, count: 0, datesList: "" };
-            }
-
-            var sumEl = document.getElementById("batchPaySummary");
-            if (sumEl) sumEl.innerText = "נבחרו " + window.currentBatchSelection.count + " פגישות | סה\"כ לתשלום: ₪" + window.currentBatchSelection.totalAmount;
-        };
-
-        window.openBatchPayModal = function() {
-            if (!window.currentBatchSelection || window.currentBatchSelection.count === 0) {
-                window.showToast("⚠️ אנא בחר פגישות לגבייה מהטבלה", "error");
-                return;
-            }
-            var modal = document.getElementById("batchPayModal");
-            var desc = document.getElementById("batchModalDesc");
-            var notice = document.getElementById("batchDatesListNotice");
-            var methodSelect = document.getElementById("batchPayMethod");
-
-            var lastMethod = localStorage.getItem("lastPaymentMethod");
-            if (lastMethod && methodSelect) methodSelect.value = lastMethod;
-
-            if (desc) desc.innerText = "גבייה עבור " + window.currentBatchSelection.count + " פגישות בסך כולל מע\"מ: ₪" + window.currentBatchSelection.totalAmount;
-            if (notice) notice.innerText = "תאריכי פגישות: " + window.currentBatchSelection.datesList + " (" + window.currentBatchSelection.clientName + ")";
-            if (modal) modal.style.display = "flex";
-        };
-
-        window.executeBatchPayment = async function(isDraft) {
-            var appScriptUrl = window.getAppsScriptUrl();
-            if (!appScriptUrl) {
-                window.showToast("⚠️ כתובת Google Apps Script אינה מוגדרת", "error");
-                window.openSyncModal();
-                return;
-            }
-
-            var paymentMethod = document.getElementById("batchPayMethod").value;
-            localStorage.setItem("lastPaymentMethod", paymentMethod);
-
-            var btnDraft = document.getElementById("btnCreateDraft");
-            var btnFinal = document.getElementById("btnConfirmBatchPay");
-
-            if (isDraft && btnDraft) { btnDraft.disabled = true; btnDraft.innerText = "מפיק טיוטה... ⏳"; }
-            else if (!isDraft && btnFinal) { btnFinal.disabled = true; btnFinal.innerText = "מנפיק חשבונית... ⏳"; }
-
-            var payload = {
-                action: "createMorningDoc",
-                clientName: window.currentBatchSelection.clientName,
-                clientPhone: window.currentBatchSelection.clientPhone,
-                amount: window.currentBatchSelection.totalAmount,
-                description: "פירוט תאריכי טיפולים: " + window.currentBatchSelection.datesList,
-                paymentMethod: paymentMethod,
-                datesList: window.currentBatchSelection.datesList,
-                isDraft: isDraft
-            };
-
-            try {
-                var response = await fetch(appScriptUrl, {
-                    method: "POST",
-                    headers: { "Content-Type": "text/plain;charset=utf-8" },
-                    body: JSON.stringify(payload)
-                });
-
-                var result = await response.json();
-
-                if (result.success) {
-                    window.closeModal("batchPayModal");
-                    if (result.pdfUrl) window.open(result.pdfUrl, "_blank");
-
-                    if (!isDraft) {
-                        window.appData.appointments.forEach(function(a) {
-                            if (window.currentBatchSelection.ids.includes(String(a.id))) {
-                                a.isPaid = true;
-                                a.status = "שולם";
-                                a.docNumber = result.docNumber;
-                            }
-                        });
-                        window.renderAll();
-                        setTimeout(window.fetchDataFromSheets, 1500);
-                    }
-
-                    window.showToast(isDraft ? "✅ טיוטה הופקה ונפתחה!" : ("🎉 חשבונית מס קבלה מס' " + result.docNumber + " הונפקה ונשמרה ב-Google Sheets!"), "success");
-                } else {
-                    window.showToast("❌ שגיאה: " + (result.message || "נכשלה יצירת המסמך"), "error");
-                }
-            } catch (err) {
-                window.showToast("❌ תקלה בתקשורת: " + err.message, "error");
-            } finally {
-                if (btnDraft) { btnDraft.disabled = false; btnDraft.innerText = "👁️ הפק טיוטה לבדיקה (Draft)"; }
-                if (btnFinal) { btnFinal.disabled = false; btnFinal.innerText = "✓ הנפק חשבונית מס קבלה סופית"; }
-            }
-        };
-
-        window.saveNewPatient = async function() {
-            var name = document.getElementById("newPatName").value.trim();
-            var phone = document.getElementById("newPatPhone").value.trim();
-            var rate = Number(document.getElementById("newPatRate").value) || 350;
-
-            if (!name) { window.showToast("⚠️ אנא הזן שם מטופל", "error"); return; }
-
-            window.closeModal("addPatientModal");
-            window.showToast("שומר מטופל ב-Google Sheets... ⏳", "info");
-
-            window.appData.patients.push({ id: window.appData.patients.length + 1, name: name, phone: phone, rate: rate });
-            window.renderAll();
-
-            var url = window.getAppsScriptUrl();
-            if (url) {
-                try {
-                    await fetch(url, {
-                        method: "POST",
-                        headers: { "Content-Type": "text/plain;charset=utf-8" },
-                        body: JSON.stringify({ action: "addPatient", name: name, phone: phone, rate: rate })
-                    });
-                } catch(e){}
-            }
-            window.showToast("✅ מטופל חדש נשמר בהצלחה!", "success");
-        };
-
-        window.saveNewAppointment = function() {
-            window.closeModal("addAppointmentModal");
-
-            var selectEl = document.getElementById("newAppPatientSelect");
-            var clientName = selectEl ? selectEl.value.trim() : "";
-            var dateEl = document.getElementById("newAppDate");
-            var dateVal = (dateEl && dateEl.value) ? dateEl.value : new Date().toISOString().slice(0, 10);
-            var amountEl = document.getElementById("newAppAmount");
-            var amountVal = amountEl ? (Number(amountEl.value) || 350) : 350;
-            var methodEl = document.getElementById("newAppPayMethod");
-            var methodVal = methodEl ? methodEl.value : "ביט / פייבוקס";
-
-            if (!clientName) {
-                window.showToast("⚠️ אנא בחר מטופל", "error");
-                return;
-            }
-
-            window.showToast("קובע פגישה ב-Google Sheets... ⏳", "info");
-
-            var clientPhone = window.getPatientPhoneByName(clientName);
-            window.appData.appointments.push({
-                id: window.appData.appointments.length + 1,
-                date: dateVal,
-                clientName: clientName,
-                clientPhone: clientPhone,
-                amount: amountVal,
-                status: "ממתין לתשלום",
-                isPaid: false,
-                paymentMethod: methodVal,
-                docNumber: ""
-            });
-
-            window.renderAll();
-
-            var url = window.getAppsScriptUrl();
-            if (url) {
-                fetch(url, {
-                    method: "POST",
-                    headers: { "Content-Type": "text/plain;charset=utf-8" },
-                    body: JSON.stringify({ action: "addAppointment", clientName: clientName, date: dateVal, amount: amountVal, paymentMethod: methodVal })
-                })
-                .then(function(res) { return res.json(); })
-                .then(function() {
-                    window.showToast("✅ פגישה נקבעה ונשמרה ב-Sheets!", "success");
-                    setTimeout(window.fetchDataFromSheets, 1000);
-                })
-                .catch(function(err) {
-                    window.showToast("✅ פגישה נקבעה!", "success");
-                });
-            } else {
-                window.showToast("✅ פגישה נקבעה!", "success");
-            }
-        };
-
-        window.renderWhatsAppDebtors = function() {
-            var tbody = document.getElementById("whatsappDebtorsTable");
-            if (!tbody || !window.appData || !window.appData.appointments) return;
-            var debtors = window.appData.appointments.filter(function(a) { return !a.isPaid; });
-            tbody.innerHTML = debtors.map(function(d) {
-                return '<tr><td><strong>' + d.clientName + '</strong></td><td>' + (d.clientPhone || '-') + '</td><td>פגישה בתאריך ' + d.date + '</td><td style="color:var(--danger); font-weight:700;">₪' + d.amount + '</td><td><button class="btn-whatsapp" type="button" style="font-size:0.75rem; padding:4px 8px;" onclick="openWaPreview(\'' + d.clientName + '\', \'' + d.clientPhone + '\', ' + d.amount + ')">📲 שלח תזכורת</button></td></tr>';
-            }).join('');
-        };
-
-        window.renderMorningTable = function() {
-            var tbody = document.getElementById("morningPaymentsTable");
-            if (!tbody || !window.appData || !window.appData.appointments) return;
-            var elPend = document.getElementById("morningPendingCount");
-            var elDocs = document.getElementById("morningDocsCount");
-
-            if (elPend) elPend.innerText = window.appData.appointments.filter(function(a) { return !a.docNumber; }).length;
-            if (elDocs) elDocs.innerText = window.appData.appointments.filter(function(a) { return a.docNumber; }).length;
-
-            tbody.innerHTML = window.appData.appointments.map(function(a) {
-                return '<tr><td>' + a.date + '</td><td><strong>' + a.clientName + '</strong></td><td>₪' + a.amount + '</td><td>' + a.paymentMethod + '</td><td><span class="badge ' + (a.docNumber ? 'badge-success' : 'badge-warning') + '">' + (a.docNumber ? ('הונפקה #' + a.docNumber) : 'טרם הונפק') + '</span></td><td><button class="btn-morning" type="button" style="font-size:0.75rem; padding:4px 8px;" onclick="openBatchPayModal()">🧾 הנפק חשבונית</button></td></tr>';
-            }).join('');
-        };
-
-        window.renderStats = function() {
-            var totalPaid = 0, totalDebt = 0;
-            if (window.appData && window.appData.appointments) {
-                window.appData.appointments.forEach(function(a) {
-                    if (a.isPaid) totalPaid += a.amount;
-                    else totalDebt += a.amount;
-                });
-            }
-            var elPaid = document.getElementById("reportPaidTotal");
-            var elDebt = document.getElementById("reportDebtTotal");
-            if (elPaid) elPaid.innerText = "₪" + totalPaid;
-            if (elDebt) elDebt.innerText = "₪" + totalDebt;
-        };
-
-        window.populateDropdownFilters = function() {
-            var selectIds = ['patListFilter', 'appPatientFilter', 'paymentPatientSelect'];
-            var savedValues = {};
-
-            selectIds.forEach(function(id) {
-                var el = document.getElementById(id);
-                if (el) savedValues[id] = el.value;
-            });
-
-            var uniqueNames = new Set();
-            if (window.appData && window.appData.patients) {
-                window.appData.patients.forEach(function(p) { if (p.name && p.name.trim()) uniqueNames.add(p.name.trim()); });
-            }
-            if (window.appData && window.appData.appointments) {
-                window.appData.appointments.forEach(function(a) { if (a.clientName && a.clientName.trim() && a.clientName !== "מטופל/ת") uniqueNames.add(a.clientName.trim()); });
-            }
-
-            var sortedNames = Array.from(uniqueNames).sort(function(a, b) { return a.localeCompare(b, 'he'); });
-            var optionsHtml = '<option value="ALL">-- כל המטופלים --</option>' + sortedNames.map(function(n) { return '<option value="' + n + '">' + n + '</option>'; }).join('');
-
-            selectIds.forEach(function(id) {
-                var el = document.getElementById(id);
-                if (el) {
-                    el.innerHTML = optionsHtml;
-                    if (savedValues[id] && (savedValues[id] === "ALL" || uniqueNames.has(savedValues[id]))) {
-                        el.value = savedValues[id];
-                    }
-                }
-            });
-        };
-
-        window.toggleDrawer = function() {
-            var drawer = document.getElementById("sidebarDrawer");
-            var backdrop = document.getElementById("drawerBackdrop");
-            if (drawer) drawer.classList.toggle("open");
-            if (backdrop) backdrop.classList.toggle("active");
-        };
-
-        window.closeDrawer = function() {
-            var drawer = document.getElementById("sidebarDrawer");
-            var backdrop = document.getElementById("drawerBackdrop");
-            if (drawer) drawer.classList.remove("open");
-            if (backdrop) backdrop.classList.remove("active");
-        };
-
-        window.switchTab = function(tabId) {
-            document.querySelectorAll(".tab-section").forEach(function(tab) { tab.classList.remove("active"); });
-            var targetTab = document.getElementById("tab-" + tabId);
-            if (targetTab) targetTab.classList.add("active");
-
-            document.querySelectorAll(".nav-btn").forEach(function(btn) { btn.classList.remove("active"); });
-            var targetBtn = document.getElementById("btn-" + tabId);
-            if (targetBtn) targetBtn.classList.add("active");
-            window.closeDrawer();
-        };
-
-        window.toggleWaConnection = function() {
-            var badge = document.getElementById("waConnectionBadge");
-            if (badge) {
-                var isConn = badge.classList.contains("badge-success");
-                badge.className = isConn ? "badge badge-warning" : "badge badge-success";
-                badge.innerText = isConn ? "מצב: לא מחובר 🔴" : "מצב: מחובר 🟢";
-            }
-        };
-
-        window.openWaPreview = function(name, phone, amount) {
-            var phoneEl = document.getElementById("waPhoneInput");
-            var textEl = document.getElementById("waMessageText");
-            if (phoneEl) phoneEl.value = phone || "";
-            if (textEl) textEl.value = "שלום " + name + ", תזכורת ידידותית לגבי יתרת חוב בסך ₪" + amount + " עבור הטיפול/ים בקליניקה. ניתן לשלם בביט/פייבוקס/העברה. תודה!";
-            var modal = document.getElementById("waPreviewModal");
-            if (modal) modal.style.display = "flex";
-        };
-
-        window.openMorningConfigModal = function() {
-            var modal = document.getElementById("morningConfigModal");
-            if (modal) modal.style.display = "flex";
-        };
-
-        window.saveMorningConfig = function() {
-            window.closeModal("morningConfigModal");
-            window.checkSyncStatus();
-        };
-
-        window.copyWaText = function() {
-            var text = document.getElementById("waMessageText");
-            if (text) { navigator.clipboard.writeText(text.value); window.showToast("📋 הטקסט הועתק!", "success"); }
-        };
-
-        window.sendWhatsAppFromPreview = function() {
-            var phoneEl = document.getElementById("waPhoneInput");
-            var textEl = document.getElementById("waMessageText");
-            var phone = phoneEl ? phoneEl.value : "";
-            var text = textEl ? textEl.value : "";
-            if (phone) window.open("[https://wa.me/](https://wa.me/)" + phone.replace(/[^0-9]/g, '') + "?text=" + encodeURIComponent(text), "_blank");
-        };
-
-        document.addEventListener("DOMContentLoaded", function() {
-            try {
-                window.checkSyncStatus();
-            } catch(e) {
-                console.error("Initialization error:", e);
-            }
-        });
-    </script>
 </body>
 </html>
