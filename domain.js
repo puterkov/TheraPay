@@ -15,6 +15,10 @@ export function selectedAppointments(appointments, ids, patientId) {
   return appointments.filter(a => ids.has(a.id) && a.patientId === patientId && !a.isPaid);
 }
 export function total(appointments) { return appointments.reduce((sum,a) => sum + Math.round(a.amount * 100),0) / 100; }
+export function applyIssuedDocument(appointments,patientId,ids,result) {
+  const selected=new Set(ids);
+  return appointments.map(a=>a.patientId===patientId && selected.has(a.id)?{...a,isPaid:true,docNumber:String(result.docNumber),pdfUrl:result.pdfUrl||'',paymentMethod:result.paymentLabel||a.paymentMethod,morningStatus:result.environment==='sandbox'?'issued_sandbox':'issued'}:a);
+}
 export function phoneForWhatsApp(value) {
   let digits = String(value || '').replace(/\D/g,'');
   if (digits.startsWith('00972')) digits = digits.slice(2);

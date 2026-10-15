@@ -1,9 +1,9 @@
-import { today, money, validDate, defaultSelection, selectedAppointments, total, phoneForWhatsApp, displayDate, paymentMessage } from './domain.js';
+import { today, money, validDate, defaultSelection, selectedAppointments, total, phoneForWhatsApp, displayDate, paymentMessage, applyIssuedDocument } from './domain.js';
 
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const demo = new URLSearchParams(location.search).get('demo') === '1';
-const state = { patients:[], appointments:[], patientId:'', month:today().slice(0,7), selected:new Set(), view:'dashboard', connected:false, environment:'sandbox', morningConfigured:false, busy:false };
+const state = { patients:[], appointments:[], patientId:'', month:today().slice(0,7), selected:new Set(), view:'dashboard', connected:false, loaded:false, loading:false, refreshFailed:false, environment:'sandbox', morningConfigured:false, busy:false };
 let attempt = readAttempt();
 function readAttempt() { try { return JSON.parse(sessionStorage.getItem('THERAPAY_ATTEMPT') || 'null'); } catch { return null; } }
 function notice(text, error = false) { $('notice').textContent = text; $('notice').hidden = false; $('notice').classList.toggle('error', error); }
@@ -16,39 +16,53 @@ function safeLink(url) { try { const u = new URL(url); return u.protocol === 'ht
 async function api(action, payload = {}) {
   if (demo) throw new Error('מצב הדגמה אינו מחובר לשרת.');
   const token = sessionStorage.getItem('THERAPAY_ACCESS_TOKEN');
-  if (!apiUrl() || !token) throw new Error('יש להתחבר לקליניקה לפני שמירת נתונים.');
+  if (!apiUrl() || !token) { const error=new Error('יש להתחבר לקליניקה דרך ההגדרות.');error.code='AUTH';throw error; }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 65000);
   try {
     const response = await fetch(apiUrl(), { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({ ...payload, action, accessToken:token }), signal:controller.signal, redirect:'follow', credentials:'omit' });
-    if (!response.ok) throw new Error('שגיאת תקשורת עם השרת.');
+    if (!response.ok) { const error=new Error('שגיאת תקשורת עם השרת.');if(response.status===401||response.status===403)error.code='AUTH';throw error; }
     let data;
     try { data = await response.json(); } catch { throw new Error('השרת לא החזיר נתונים תקינים. יש לבדוק את פריסת Apps Script.'); }
     if (!data.success) { const error = new Error(data.message || 'הפעולה נכשלה'); error.code = data.code; throw error; }
     if (data.apiVersion !== 2) throw new Error('יש לעדכן את הבקנד לגרסה 2 לפני החיבור לממשק הזה.');
     return data;
   } catch (error) {
-    if (error.name === 'AbortError' || error instanceof TypeError) throw new Error('לא התקבלה תשובה מהשרת. אם בוצעה הפקה, יש לבדוק את Morning לפני ניסיון נוסף; הבקשה נשמרה למניעת כפילות.');
+    if (error.name === 'AbortError' || error instanceof TypeError) throw new Error(action==='getAllData'?'לא התקבלו נתונים מהשרת. אפשר לנסות לרענן שוב דרך ההגדרות.':action==='createMorningDoc'?'לא התקבלה תשובה מהשרת. יש לבדוק את Morning לפני ניסיון נוסף; הבקשה נשמרה למניעת כפילות.':'לא התקבלה תשובה לשמירה. אפשר לנסות שוב עם אותם פרטים; מזהה הבקשה נשמר למניעת כפילות.');
     throw error;
   } finally { clearTimeout(timeout); }
 }
 
 async function load() {
-  if (state.busy) return;
+  if (state.busy || state.loading) return;
+  state.loading=true;
   $('connection').textContent = 'טוען…';
+  updateSelection();
+  $('refresh').disabled=true;
   try {
     const data = await api('getAllData');
     if (!Array.isArray(data.patients) || !Array.isArray(data.appointments)) throw new Error('מבנה הנתונים מהשרת אינו תקין.');
     state.patients = data.patients;
     state.appointments = data.appointments;
     state.connected = true;
+    state.loaded = true;
+    state.refreshFailed = false;
+    $('settings-result').textContent='';
     state.environment = data.environment;
     state.morningConfigured = data.morningConfigured;
     if (!patient()) { state.patientId = state.patients[0]?.id || ''; resetSelection(); }
     state.selected = new Set(chosen().map(a => a.id));
     render();
     notice(`נטענו ${state.patients.length} מטופלים ו־${state.appointments.length} פגישות מהגיליון${state.environment === 'sandbox' ? ' · Morning בסביבת בדיקות' : ''}`);
-  } catch (error) { state.connected = false; render(); notice(error.message, true); throw error; }
+  } catch (error) {
+    // A failed read is not a logout. Only an explicit authentication failure invalidates access.
+    if(error.code==='AUTH'){state.connected=false;sessionStorage.removeItem('THERAPAY_ACCESS_TOKEN');}
+    state.refreshFailed=state.loaded;
+    $('settings-result').textContent=error.message;
+    render();
+    notice(state.loaded && error.code!=='AUTH' ? 'רענון הנתונים לא הושלם. מוצגים הנתונים האחרונים; אפשר לנסות שוב דרך ההגדרות.' : error.message,true);
+    throw error;
+  } finally {state.loading=false;$('refresh').disabled=false;renderConnectionStatus();updateSelection();}
 }
 
 function resetSelection() { state.selected = defaultSelection(state.appointments, state.patientId, state.month); }
@@ -89,12 +103,14 @@ function updateSelection() {
   const list = chosen();
   $('selection-count').textContent = `${list.length} פגישות נבחרו`;
   $('selection-total').textContent = money(total(list));
-  $('whatsapp').disabled = !list.length || state.busy;
-  $('payment').disabled = !list.length || state.busy || !(demo || state.connected);
+  $('whatsapp').disabled = !list.length || state.busy || state.loading;
+  $('payment').disabled = !list.length || state.busy || state.loading || !(demo || state.connected);
+}
+function renderConnectionStatus(){
+  $('connection').textContent=demo?'מצב הדגמה':state.loading?'מרענן נתונים…':state.connected?(state.refreshFailed?'מחובר · הרענון האחרון לא הושלם':'מחובר לקליניקה'):'לא מחובר · יש להזין קוד גישה';
 }
 function render() {
-  $('connection').textContent = demo ? 'נתוני דוגמה' : state.connected ? 'מחובר · הגדרות' : 'התחברות';
-  $('onboarding').hidden = state.connected || demo;
+  renderConnectionStatus();
   renderDashboard();
   renderCollection();
   $('patient-list').innerHTML = state.patients.map(p => `<article class="patient-card"><div class="row"><strong>${esc(p.name)}</strong><span>${esc(money(p.rate))} לפגישה</span></div><div class="small muted">${esc(p.phone)} · ${esc(p.status)}</div><button class="secondary" data-patient="${esc(p.id)}">פגישות וגבייה ←</button></article>`).join('') || '<div class="empty">טרם נוספו מטופלים.</div>';
@@ -113,7 +129,7 @@ function renderDashboard() {
   $('stat-debt').textContent = money(total(state.appointments.filter(a=>!a.isPaid)));
   const debtors=state.patients.map(p=>({patient:p,apps:state.appointments.filter(a=>a.patientId===p.id&&!a.isPaid)})).filter(d=>d.apps.length);
   $('dashboard-debtors').innerHTML=debtors.map(d=>`<button class="debtor-row" data-patient="${esc(d.patient.id)}"><span>${esc(d.patient.name)}<small>${d.apps.length} פגישות ממתינות לתשלום</small></span><strong>${esc(money(total(d.apps)))}</strong><span aria-hidden="true">←</span></button>`).join('') || `<p class="small">${state.connected||demo ? (state.appointments.length ? 'אין פגישות שממתינות לתשלום.' : 'לא התקבלו פגישות מהגיליון. לאחר בירור הטעינה, יתרות המטופלים יופיעו כאן.') : 'יתרות המטופלים יופיעו לאחר החיבור.'}</p>`;
-  $('data-status').textContent=demo?'מצב הדגמה · הנתונים בדויים':state.connected?`חיבור לגיליון פעיל · ${state.patients.length} מטופלים · ${state.appointments.length} פגישות`:'אין חיבור פעיל לגיליון. לחצו על התחברות למעלה.';
+  $('data-status').textContent=demo?'מצב הדגמה · הנתונים בדויים':state.loaded?`${state.patients.length} מטופלים · ${state.appointments.length} פגישות${state.refreshFailed?' · מוצגים הנתונים האחרונים':''}`:'נתוני הקליניקה טרם נטענו. אפשר להתחבר דרך ההגדרות.';
 }
 
 function openDialog(name) {
@@ -123,6 +139,10 @@ function openDialog(name) {
     form.elements.url.value = apiUrl();
     form.elements.accessToken.value = sessionStorage.getItem('THERAPAY_ACCESS_TOKEN') || '';
     form.elements.signature.value = localStorage.getItem('THERAPAY_SIGNATURE') || '';
+    $('settings-result').textContent='';
+    renderConnectionStatus();
+    view('settings');
+    return;
   }
   if (name === 'patient' || name === 'appointment') {
     if (!state.connected && !demo) { notice('יש להתחבר לקליניקה לפני הוספת נתונים.',true); return openDialog('settings'); }
@@ -160,7 +180,6 @@ document.addEventListener('click', event => {
   const person=event.target.closest('[data-patient]'); if(person) {state.patientId=person.dataset.patient;resetSelection();renderCollection();view('collection');}
 });
 document.querySelectorAll('dialog').forEach(d => d.addEventListener('cancel',e => {if(state.busy)e.preventDefault();}));
-$('connection').addEventListener('click',()=>openDialog('settings'));
 $('patient-filter').addEventListener('change', e => {state.patientId=e.target.value;resetSelection();renderCollection();});
 $('month').addEventListener('change',e=>{if(/^\d{4}-\d{2}$/.test(e.target.value)){state.month=e.target.value;resetSelection();renderCollection();}});
 $('appointment-groups').addEventListener('change',e=>{const id=e.target.dataset.appointment;if(id){e.target.checked?state.selected.add(id):state.selected.delete(id);updateSelection();}});
@@ -173,10 +192,10 @@ $('settings-form').addEventListener('submit',async e=>{
   e.preventDefault(); const f=e.target; let u;
   try{u=new URL(f.elements.url.value.trim());if(u.protocol!=='https:'||u.hostname!=='script.google.com'||!/^\/macros\/s\/[\w-]+\/exec$/.test(u.pathname)||u.search)throw new Error();}catch{notice('יש להזין כתובת Web App שמסתיימת ב־/exec, מתוך Apps Script.',true);return;}
   localStorage.setItem('APPS_SCRIPT_URL',u.href);localStorage.setItem('THERAPAY_SIGNATURE',f.elements.signature.value.trim());sessionStorage.setItem('THERAPAY_ACCESS_TOKEN',f.elements.accessToken.value.trim());
-  const b=f.querySelector('[type=submit]');b.disabled=true;try{await load();$('settings').close();}catch(error){$('settings').close();}finally{b.disabled=false;}
+  const b=f.querySelector('[type=submit]');b.disabled=true;try{await load();$('settings-result').textContent='החיבור הושלם והנתונים נטענו.';}catch(error){$('settings-result').textContent=error.message;}finally{b.disabled=false;}
 });
-$('refresh').addEventListener('click',async()=>{try{await load();$('settings').close();}catch{$('settings').close();}});
-$('disconnect').addEventListener('click',()=>{sessionStorage.removeItem('THERAPAY_ACCESS_TOKEN');state.patients=[];state.appointments=[];state.patientId='';state.selected.clear();state.connected=false;$('settings').close();render();notice('התנתקת מהקליניקה.');});
+$('refresh').addEventListener('click',async()=>{try{await load();$('settings-result').textContent='הנתונים עודכנו.';}catch(error){$('settings-result').textContent=error.message;}});
+$('disconnect').addEventListener('click',()=>{if(state.loading)return;sessionStorage.removeItem('THERAPAY_ACCESS_TOKEN');state.patients=[];state.appointments=[];state.patientId='';state.selected.clear();state.connected=false;state.loaded=false;state.refreshFailed=false;render();$('settings-result').textContent='התנתקת מהקליניקה.';});
 for(const type of ['patient','appointment']) $(type+'-form').addEventListener('submit',async e=>{
   e.preventDefault();const f=e.target;const b=f.querySelector('[type=submit]');b.disabled=true;
   const values=Object.fromEntries(new FormData(f));
@@ -187,7 +206,7 @@ for(const type of ['patient','appointment']) $(type+'-form').addEventListener('s
   try{await api(type==='patient'?'addPatient':'addAppointment',{...values,requestId:f.dataset.requestId});f.closest('dialog').close();delete f.dataset.fingerprint;delete f.dataset.requestId;await load();notice(type==='patient'?'המטופל נוסף בהצלחה':'הפגישה נוספה בהצלחה');}catch(error){notice(error.message,true);formStatus=document.createElement('p');formStatus.setAttribute('role','status');formStatus.textContent=error.message;f.append(formStatus);}finally{b.disabled=false;}
 });
 $('pay-form').addEventListener('submit',async e=>{
-  e.preventDefault();if(state.busy||!chosen().length)return;
+  e.preventDefault();if(state.busy||state.loading||!chosen().length)return;
   if(demo){$('pay-result').textContent='הדגמה בלבד · כאן תופק חשבונית מס־קבלה. לא בוצעה הנפקה.';return;}
   if(!state.morningConfigured){$('pay-result').textContent='מפתחות Morning טרם הוגדרו בבקנד.';return;}
   const f=e.target;const payload={patientId:state.patientId,ids:chosen().map(a=>a.id).sort(),amount:total(chosen()),paymentMethod:f.elements.paymentMethod.value,paymentDate:f.elements.paymentDate.value};
@@ -200,8 +219,12 @@ $('pay-form').addEventListener('submit',async e=>{
     attempt=null;sessionStorage.removeItem('THERAPAY_ATTEMPT');
     $('pay-result').replaceChildren(document.createTextNode('המסמך '+result.docNumber+' הופק והפגישות עודכנו.'));
     const url=safeLink(result.pdfUrl);if(url){const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=' צפייה במסמך ↗';$('pay-result').append(a);}
+    state.appointments=applyIssuedDocument(state.appointments,payload.patientId,payload.ids,result);
+    state.connected=true;
+    state.loaded=true;
     state.selected.clear();state.busy=false;
-    try{await load();}catch{notice('המסמך הופק, אך רענון הנתונים נכשל. יש לרענן את החיבור לפני פעולה נוספת.',true);}
+    render();
+    try{await load();}catch(error){notice(error.code==='AUTH'?'המסמך הופק. קוד הגישה נדחה בעת הרענון; יש להתחבר דרך ההגדרות.':'המסמך הופק והפגישות שנבחרו עודכנו. הרענון לא הושלם; החיבור נשמר ואפשר לרענן דרך ההגדרות.',true);}
     $('issue').disabled=true;
   }catch(error){
     $('pay-result').textContent=error.message;
