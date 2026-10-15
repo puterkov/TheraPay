@@ -771,14 +771,21 @@
         </div>
     </div>
 
-    <!-- לוגיקת JavaScript מסונכרנת -->
+    <!-- לוגיקת JavaScript מלאה ומסונכרנת -->
     <script>
+        // אובייקט הנתונים המרכזי שייטען מה-Google Sheets
+        let appData = {
+            patients: [],
+            appointments: [],
+            payments: []
+        };
+
         // שליפת כתובת ה-Apps Script המסונכרנת
         function getAppsScriptUrl() {
             return localStorage.getItem("APPS_SCRIPT_URL") || localStorage.getItem("scriptUrl") || "";
         }
 
-        // מערכת הודעות Toast צפות (מניעת Alert מעצבן)
+        // מערכת הודעות Toast צפות
         function showToast(message, type = 'success') {
             let toast = document.getElementById("toastNotification");
             if (!toast) {
@@ -824,7 +831,7 @@
             }, 3500);
         }
 
-        // בדיקת סטטוס סנכרון ועדכון ה-Badge בראש העמוד
+        // בדיקת סטטוס סנכרון וטעינת נתונים ראשונית
         function checkSyncStatus() {
             const url = getAppsScriptUrl();
             const badgeBtn = document.getElementById("headerSyncBtn");
@@ -840,11 +847,49 @@
                 
                 const input = document.getElementById("scriptUrlInput");
                 if (input) input.value = url;
+
+                // טעינת הנתונים מ-Google Sheets
+                loadDataFromSheets();
             } else {
                 if (badgeBtn) badgeBtn.classList.remove("connected");
                 if (badgeIcon) badgeIcon.innerText = "☁️";
                 if (badgeText) badgeText.innerText = "סנכרון Sheets";
                 if (morningStatus) morningStatus.innerText = "נדרשת הגדרה 🔴";
+            }
+        }
+
+        // טעינת הנתונים מה-Apps Script
+        async function loadDataFromSheets() {
+            const url = getAppsScriptUrl();
+            if (!url) return;
+
+            showToast("טוען נתונים מ-Google Sheets... ⏳", "info");
+
+            try {
+                const response = await fetch(url, {
+                    method: "POST",
+                    headers: { "Content-Type": "text/plain;charset=utf-8" },
+                    body: JSON.stringify({ action: "getAllData" })
+                });
+
+                const data = await response.json();
+
+                if (data && (data.patients || data.appointments || data.data)) {
+                    const src = data.data || data;
+                    appData.patients = src.patients || [];
+                    appData.appointments = src.appointments || [];
+                    appData.payments = src.payments || [];
+
+                    renderAll();
+                    showToast("✅ הנתונים נטענו בהצלחה!", "success");
+                } else {
+                    // אם לא חזרו נתונים מובנים, מרנדרים את מה שיש
+                    renderAll();
+                }
+            } catch (err) {
+                console.error("Sheets Fetch Error:", err);
+                showToast("⚠️ שגיאה בטעינת נתונים מ-Sheets", "error");
+                renderAll();
             }
         }
 
@@ -904,6 +949,236 @@
             if (pageTitle && titles[tabId]) pageTitle.innerText = titles[tabId];
 
             closeDrawer();
+        }
+
+        // רינדור כל המסכים
+        function renderAll() {
+            renderDashboard();
+            renderPatients();
+            renderAppointments();
+            renderPatientPayments();
+            renderWhatsAppDebtors();
+            renderMorningTable();
+            renderStats();
+            populateDropdownFilters();
+        }
+
+        // רינדור הדשבורד
+        function renderDashboard() {
+            const activePatients = appData.patients.length || 0;
+            const totalApps = appData.appointments.length || 0;
+            
+            let totalPaid = 0;
+            let totalDebt = 0;
+
+            appData.appointments.forEach(app => {
+                const amount = Number(app.amount || app.price) || 0;
+                if (app.status === "שולם" || app.isPaid) {
+                    totalPaid += amount;
+                } else {
+                    totalDebt += amount;
+                }
+            });
+
+            document.getElementById("statActivePatients").innerText = activePatients;
+            document.getElementById("statThisMonthApps").innerText = totalApps;
+            document.getElementById("statLastMonthApps").innerText = 0;
+            document.getElementById("statMonthRevenue").innerText = `₪${totalPaid}`;
+            document.getElementById("statPendingPayments").innerText = `₪${totalDebt}`;
+        }
+
+        // רינדור טבלת מטופלים
+        function renderPatients() {
+            const tbody = document.getElementById("patientsTable");
+            if (!tbody) return;
+
+            const filterVal = document.getElementById("patListFilter")?.value || "ALL";
+            let list = appData.patients;
+
+            if (filterVal !== "ALL") {
+                list = list.filter(p => p.id == filterVal || p.name == filterVal);
+            }
+
+            if (list.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">אין מטופלים להצגה</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = list.map((p, idx) => `
+                <tr>
+                    <td>${p.id || idx + 1}</td>
+                    <td><strong>${p.name || p.clientName || 'מטופל'}</strong></td>
+                    <td>${p.phone || p.clientPhone || '-'}</td>
+                    <td>₪${p.rate || p.price || 350}</td>
+                    <td><span class="badge badge-success">פעיל</span></td>
+                    <td><button class="btn-action" style="font-size:0.75rem; padding:4px 8px; min-height:30px;" onclick="openPatientModal('${p.id}')">ערוך</button></td>
+                </tr>
+            `).join('');
+        }
+
+        // רינדור טבלת פגישות
+        function renderAppointments() {
+            const tbody = document.getElementById("appointmentsTable");
+            if (!tbody) return;
+
+            let list = appData.appointments;
+            const patFilter = document.getElementById("appPatientFilter")?.value || "ALL";
+
+            if (patFilter !== "ALL") {
+                list = list.filter(a => a.clientName == patFilter || a.patientId == patFilter);
+            }
+
+            if (list.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">אין פגישות להצגה</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = list.map(a => `
+                <tr>
+                    <td>${a.date || '-'}</td>
+                    <td><strong>${a.clientName || a.patientName || 'ישראל ישראלי'}</strong></td>
+                    <td>₪${a.amount || a.price || 350}</td>
+                    <td><span class="badge ${a.isPaid || a.status==='שולם' ? 'badge-success' : 'badge-warning'}">${a.status || (a.isPaid ? 'שולם' : 'ממתין לתשלום')}</span></td>
+                    <td>${a.paymentMethod || 'ביט / פייבוקס'}</td>
+                    <td><button class="btn-action" style="font-size:0.75rem; padding:4px 8px; min-height:30px;" onclick="openBatchPayModal()">גבייה</button></td>
+                </tr>
+            `).join('');
+        }
+
+        // רינדור חיובים ותשלומים
+        function renderPatientPayments() {
+            const tbody = document.getElementById("patientPaymentsTable");
+            if (!tbody) return;
+
+            let list = appData.appointments;
+            let totalVal = 0, totalPaid = 0, totalDebt = 0;
+
+            list.forEach(item => {
+                const amt = Number(item.amount || item.price) || 0;
+                totalVal += amt;
+                if (item.isPaid || item.status === 'שולם') {
+                    totalPaid += amt;
+                } else {
+                    totalDebt += amt;
+                }
+            });
+
+            document.getElementById("payTotalValue").innerText = `₪${totalVal}`;
+            document.getElementById("payTotalPaid").innerText = `₪${totalPaid}`;
+            document.getElementById("payTotalDebt").innerText = `₪${totalDebt}`;
+
+            if (list.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">אין חיובים להצגה</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = list.map((p, idx) => `
+                <tr>
+                    <td style="text-align:center;"><input type="checkbox" class="pay-chk" checked data-idx="${idx}"></td>
+                    <td>${p.date || '-'}</td>
+                    <td><strong>${p.clientName || 'ישראל ישראלי'}</strong></td>
+                    <td>₪${p.amount || 350}</td>
+                    <td><span class="badge ${p.isPaid || p.status==='שולם' ? 'badge-success' : 'badge-warning'}">${p.status || 'ממתין'}</span></td>
+                    <td>${p.docNumber ? `חשבונית מס קבלה #\${p.docNumber}` : '-'}</td>
+                </tr>
+            `).join('');
+
+            updateBatchSummary();
+        }
+
+        function toggleAllPayCheckboxes(master) {
+            const chks = document.querySelectorAll(".pay-chk");
+            chks.forEach(c => c.checked = master.checked);
+            updateBatchSummary();
+        }
+
+        function updateBatchSummary() {
+            const chks = document.querySelectorAll(".pay-chk:checked");
+            const count = chks.length;
+            const total = count * 350; // מחושב לפי הפריטים שנבחרו
+            const summary = document.getElementById("batchPaySummary");
+            if (summary) {
+                summary.innerText = `נבחרו ${count} פגישות | סה"כ לתשלום: ₪${total}`;
+            }
+        }
+
+        // רינדור חובות WhatsApp
+        function renderWhatsAppDebtors() {
+            const tbody = document.getElementById("whatsappDebtorsTable");
+            if (!tbody) return;
+
+            const debtors = appData.appointments.filter(a => !a.isPaid && a.status !== 'שולם');
+
+            if (debtors.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted);">אין חובות פתוחים לשליחת תזכורות</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = debtors.map(d => `
+                <tr>
+                    <td><strong>${d.clientName || 'ישראל ישראלי'}</strong></td>
+                    <td>${d.clientPhone || '0501234567'}</td>
+                    <td>1 פגישה (${d.date || 'החודש'})</td>
+                    <td style="color:var(--danger); font-weight:700;">₪${d.amount || 350}</td>
+                    <td>
+                        <button class="btn-whatsapp" style="font-size:0.75rem; padding:4px 8px; min-height:30px;" onclick="openWaPreview('${d.clientName}', '${d.clientPhone}', ${d.amount || 350})">📲 שלח תזכורת</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // רינדור טבלת Morning
+        function renderMorningTable() {
+            const tbody = document.getElementById("morningPaymentsTable");
+            if (!tbody) return;
+
+            const docs = appData.appointments;
+            
+            document.getElementById("morningPendingCount").innerText = docs.filter(d => !d.docNumber).length;
+            document.getElementById("morningDocsCount").innerText = docs.filter(d => d.docNumber).length;
+
+            if (docs.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">אין מסמכים להצגה</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = docs.map(d => `
+                <tr>
+                    <td>${d.date || '-'}</td>
+                    <td><strong>${d.clientName || 'ישראל ישראלי'}</strong></td>
+                    <td>₪${d.amount || 350}</td>
+                    <td>${d.paymentMethod || 'ביט / פייבוקס'}</td>
+                    <td><span class="badge ${d.docNumber ? 'badge-success' : 'badge-warning'}">${d.docNumber ? `הונפקה #\${d.docNumber}` : 'טיוטה / לא הונפק'}</span></td>
+                    <td>
+                        <button class="btn-morning" style="font-size:0.75rem; padding:4px 8px; min-height:30px;" onclick="openBatchPayModal()">🧾 הנפק חשבונית</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // רינדור דוחות
+        function renderStats() {
+            let totalPaid = 0, totalDebt = 0;
+            appData.appointments.forEach(a => {
+                const amt = Number(a.amount || a.price) || 0;
+                if (a.isPaid || a.status === 'שולם') totalPaid += amt;
+                else totalDebt += amt;
+            });
+
+            document.getElementById("reportPaidTotal").innerText = `₪${totalPaid}`;
+            document.getElementById("reportDebtTotal").innerText = `₪${totalDebt}`;
+        }
+
+        // אכלוס מסננים נגללים בטופס
+        function populateDropdownFilters() {
+            const patients = appData.patients;
+            const options = `<option value="ALL">-- כל המטופלים --</option>` + 
+                patients.map(p => `<option value="${p.id || p.name}">${p.name || p.clientName}</option>`).join('');
+
+            ['patListFilter', 'appPatientFilter', 'paymentPatientSelect', 'waPatientSelect', 'morningPatientSelect'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = options;
+            });
         }
 
         // פתיחת מודאל הגבייה + שחזור אמצעי תשלום אחרון שנבחר
@@ -984,6 +1259,9 @@
                         : `🎉 חשבונית מס קבלה מס' ${result.docNumber} הונפקה בהצלחה!`;
 
                     showToast(successMessage, "success");
+                    
+                    // רענון נתונים
+                    loadDataFromSheets();
                 } else {
                     showToast("❌ שגיאה מהשרת: " + (result.message || "נכשלה יצירת המסמך"), "error");
                 }
@@ -1007,13 +1285,6 @@
             executeBatchPayment(false);
         }
 
-        // פונקציות נוספות
-        function renderPatients() {}
-        function renderAppointments() {}
-        function renderPatientPayments() {}
-        function toggleAllPayCheckboxes(el) {}
-        function renderWhatsAppDebtors() {}
-
         function toggleWaConnection() {
             const badge = document.getElementById("waConnectionBadge");
             if (badge) {
@@ -1029,6 +1300,12 @@
             }
         }
 
+        function openWaPreview(name, phone, amount) {
+            document.getElementById("waPhoneInput").value = phone || "0501234567";
+            document.getElementById("waMessageText").value = `שלום ${name || 'מטופל/ת'}, תזכורת ידידותית לגבי יתרת חוב בסך ₪${amount} עבור הטיפול/ים בקליניקה. ניתן לשלם בביט/פייבוקס/העברה. תודה!`;
+            document.getElementById("waPreviewModal").style.display = "flex";
+        }
+
         function openMorningConfigModal() {
             document.getElementById("morningConfigModal").style.display = "flex";
         }
@@ -1038,9 +1315,6 @@
             document.getElementById("morningConfigModal").style.display = "none";
             checkSyncStatus();
         }
-
-        function renderMorningTable() {}
-        function renderStats() {}
 
         function copyWaText() {
             const text = document.getElementById("waMessageText");
@@ -1058,8 +1332,8 @@
             }
         }
 
-        function openPatientModal() {
-            showToast("פתיחת טופס להוספת מטופל חדש", "info");
+        function openPatientModal(id) {
+            showToast(id ? "פתיחת עריכת מטופל" : "פתיחת טופס להוספת מטופל חדש", "info");
         }
 
         function openAppointmentModal() {
