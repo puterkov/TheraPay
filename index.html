@@ -684,7 +684,15 @@
         }
 
         function updateBatchSummary() {
+            var allChks = document.querySelectorAll(".pay-chk");
             var checkedChks = document.querySelectorAll(".pay-chk:checked");
+            var masterChk = document.getElementById("selectAllPayCheck");
+
+            // עדכון הריבוע העליון בראש הטבלה בזמן אמת
+            if (masterChk) {
+                masterChk.checked = (allChks.length > 0 && allChks.length === checkedChks.length);
+            }
+
             var checkedIds = Array.from(checkedChks).map(function(c) { return c.getAttribute("data-id"); });
             var selectedApps = (window.appData && window.appData.appointments) ? window.appData.appointments.filter(function(a) { return checkedIds.includes(String(a.id)); }) : [];
 
@@ -711,7 +719,7 @@
         }
 
         function openSinglePayModal(appId) {
-            // בחירת פגישה בודדת והסרת הסימון משאר הפגישות
+            // ביטול בחירה מכל הפגישות, ובחירת הפגישה הבודדת שנלחצה בלבד
             var chks = document.querySelectorAll(".pay-chk");
             chks.forEach(function(c) {
                 c.checked = (String(c.getAttribute("data-id")) === String(appId));
@@ -1127,7 +1135,7 @@
                 <table>
                     <thead>
                         <tr>
-                            <th style="width:30px; text-align:center;"><input type="checkbox" id="selectAllPayCheck" checked onchange="toggleAllPayCheckboxes(this)"></th>
+                            <th style="width:30px; text-align:center;"><input type="checkbox" id="selectAllPayCheck" onchange="toggleAllPayCheckboxes(this)"></th>
                             <th>תאריך</th>
                             <th>שם המטופל</th>
                             <th>סכום (כולל מע"מ)</th>
