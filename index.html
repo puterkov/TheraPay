@@ -526,7 +526,7 @@
         </div>
     </div>
 
-    <!-- מודאלים -->
+    <!-- מודאל הוספת מטופל חדש -->
     <div class="modal" id="addPatientModal">
         <div class="modal-content">
             <div class="modal-title">👤 הוספת מטופל חדש</div>
@@ -538,6 +538,7 @@
         </div>
     </div>
 
+    <!-- מודאל קביעת פגישה חדשה -->
     <div class="modal" id="addAppointmentModal">
         <div class="modal-content">
             <div class="modal-title">📅 קביעת פגישה חדשה</div>
@@ -702,33 +703,50 @@
 
                     if (rawData.appointments && rawData.appointments.length > 0) {
                         appData.appointments = rawData.appointments.map((a, idx) => {
-                            const name = a["שם"] || a["שם המטופל"] || a["שם מלא"] || a.clientName || "מטופל/ת";
-                            const phone = a["טלפון"] || a.phone || getPatientPhoneByName(name);
-                            const statusStr = String(a["סטטוס"] || a["סטטוס תשלום"] || a.status || "");
-
-                            // סריקה גמישה של כל עמודות המסמכים/קבלה בגיליון
+                            // פענוח גמיש מכל העמודות האפשריות בשורה
+                            let name = "מטופל/ת";
+                            let dateVal = "-";
+                            let amountVal = 350;
+                            let statusVal = "";
                             let docNum = "";
-                            for (let key in a) {
-                                const kLower = key.toLowerCase();
-                                if (kLower.includes("קבלה") || kLower.includes("מסמך") || kLower.includes("חשבונית") || kLower.includes("מספר") || kLower.includes("doc")) {
-                                    if (a[key] && String(a[key]).trim() !== "" && String(a[key]).trim() !== "-") {
-                                        docNum = String(a[key]).trim();
-                                        break;
-                                    }
+
+                            for (let k in a) {
+                                const val = String(a[k] || "").trim();
+                                if (!val) continue;
+
+                                // בדיקת עמודת שם
+                                if (k.includes("שם") || k.includes("מטופל") || k.includes("לקוח") || k === "clientName") {
+                                    name = val;
+                                }
+                                // בדיקת עמודת תאריך
+                                else if ((k.includes("תאריך") || k.includes("date")) && val.includes("-")) {
+                                    dateVal = val;
+                                }
+                                // בדיקת עמודת סכום
+                                else if ((k.includes("סכום") || k.includes("מחיר") || k === "amount") && !isNaN(val)) {
+                                    amountVal = Number(val);
+                                }
+                                // בדיקת עמודת סטטוס/אמצעי תשלום
+                                else if (k.includes("סטטוס") || k.includes("מצב") || val.includes("שולם") || val.includes("ממתין")) {
+                                    statusVal = val;
+                                }
+                                // בדיקת עמודת מסמך/קבלה
+                                else if (k.includes("קבלה") || k.includes("מסמך") || k.includes("חשבונית") || val.startsWith("APP-") || val.length > 5) {
+                                    docNum = val;
                                 }
                             }
 
-                            const isPaid = statusStr.indexOf("שולם") !== -1 || docNum !== "";
+                            const isPaid = statusVal.includes("שולם") || docNum.length > 5;
 
                             return {
                                 id: a.id || idx + 1,
-                                date: a["תאריך"] || a.date || "-",
+                                date: dateVal,
                                 clientName: name,
-                                clientPhone: phone,
-                                amount: Number(a["סכום"]) || Number(a["מחיר"]) || Number(a.amount) || 350,
+                                clientPhone: getPatientPhoneByName(name),
+                                amount: amountVal,
                                 status: isPaid ? "שולם" : "ממתין לתשלום",
                                 isPaid: isPaid,
-                                paymentMethod: a["אמצעי תשלום"] || a.paymentMethod || "ביט / פייבוקס",
+                                paymentMethod: statusVal || "ביט / פייבוקס",
                                 docNumber: docNum
                             };
                         });
@@ -759,6 +777,7 @@
         }
 
         function renderAll() {
+            populateDropdownFilters();
             renderDashboard();
             renderPatients();
             renderAppointments();
@@ -766,7 +785,6 @@
             renderWhatsAppDebtors();
             renderMorningTable();
             renderStats();
-            populateDropdownFilters();
         }
 
         function renderDashboard() {
@@ -985,9 +1003,15 @@
 
             if (!name) { showToast("⚠️ אנא הזן שם מטופל", "error"); return; }
 
+            // סגירת המודאל מיד בלחיצה
+            document.getElementById("addPatientModal").style.display = "none";
+            showToast("שומר מטופל ב-Google Sheets... ⏳", "info");
+
+            appData.patients.push({ id: appData.patients.length + 1, name, phone, rate });
+            renderAll();
+
             const url = getAppsScriptUrl();
             if (url) {
-                showToast("שומר מטופל ב-Google Sheets... ⏳", "info");
                 try {
                     await fetch(url, {
                         method: "POST",
@@ -996,16 +1020,16 @@
                     });
                 } catch(e){}
             }
-
-            appData.patients.push({ id: appData.patients.length + 1, name, phone, rate });
-            renderAll();
-            document.getElementById("addPatientModal").style.display = "none";
             showToast("✅ מטופל חדש נשמר בהצלחה!", "success");
         }
 
         function openAppointmentModal() {
             const select = document.getElementById("newAppPatientSelect");
-            select.innerHTML = appData.patients.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+            const namesSet = new Set();
+            appData.patients.forEach(p => namesSet.add(p.name));
+            appData.appointments.forEach(a => namesSet.add(a.clientName));
+
+            select.innerHTML = Array.from(namesSet).map(n => `<option value="${n}">${n}</option>`).join('');
             document.getElementById("newAppDate").value = new Date().toISOString().slice(0, 10);
             autoFillAppAmount();
             document.getElementById("addAppointmentModal").style.display = "flex";
@@ -1026,9 +1050,19 @@
 
             if (!date) { showToast("⚠️ אנא בחר תאריך", "error"); return; }
 
+            // סגירת החלון מיד בלחיצה!
+            document.getElementById("addAppointmentModal").style.display = "none";
+            showToast("שומר פגישה ב-Google Sheets... ⏳", "info");
+
+            appData.appointments.push({
+                id: appData.appointments.length + 1,
+                date, clientName, clientPhone, amount, status: "ממתין לתשלום", isPaid: false, paymentMethod, docNumber: ""
+            });
+
+            renderAll();
+
             const url = getAppsScriptUrl();
             if (url) {
-                showToast("שומר פגישה ב-Google Sheets... ⏳", "info");
                 try {
                     await fetch(url, {
                         method: "POST",
@@ -1037,14 +1071,6 @@
                     });
                 } catch(e){}
             }
-
-            appData.appointments.push({
-                id: appData.appointments.length + 1,
-                date, clientName, clientPhone, amount, status: "ממתין לתשלום", isPaid: false, paymentMethod, docNumber: ""
-            });
-
-            renderAll();
-            document.getElementById("addAppointmentModal").style.display = "none";
             showToast("✅ פגישה חדשה נקבעה ונשמרה!", "success");
         }
 
@@ -1091,8 +1117,13 @@
             document.getElementById("reportDebtTotal").innerText = `₪${totalDebt}`;
         }
 
+        // מיזוג ואגירה של כל שמות המטופלים הייחודיים עבור המסננים
         function populateDropdownFilters() {
-            const options = `<option value="ALL">-- כל המטופלים --</option>` + appData.patients.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+            const uniqueNames = new Set();
+            appData.patients.forEach(p => { if (p.name) uniqueNames.add(p.name); });
+            appData.appointments.forEach(a => { if (a.clientName) uniqueNames.add(a.clientName); });
+
+            const options = `<option value="ALL">-- כל המטופלים --</option>` + Array.from(uniqueNames).map(n => `<option value="${n}">${n}</option>`).join('');
             ['patListFilter', 'appPatientFilter', 'paymentPatientSelect'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.innerHTML = options;
