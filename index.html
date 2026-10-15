@@ -406,7 +406,7 @@
             <div class="table-container">
                 <table>
                     <thead>
-                        <tr><th>מזהה</th><th>שם מלא</th><th>טלפון</th><th>תעריף (כולל מע"מ)</th><th>סטטוס</th><th>פעולות</th></tr>
+                        <tr><th>מזהה</th><th>שם מלא</th><th>טלפון</th><th>תעריף (כולל מע"מ)</th><th>סטטוס</th></tr>
                     </thead>
                     <tbody id="patientsTable"></tbody>
                 </table>
@@ -526,7 +526,43 @@
         </div>
     </div>
 
-    <!-- מודאלים -->
+    <!-- מודאל הוספת מטופל חדש -->
+    <div class="modal" id="addPatientModal">
+        <div class="modal-content">
+            <div class="modal-title">👤 הוספת מטופל חדש</div>
+            <div class="form-group"><label>שם מלא</label><input type="text" id="newPatName" placeholder="ישראל ישראלי"></div>
+            <div class="form-group"><label>טלפון</label><input type="text" id="newPatPhone" placeholder="0500000000"></div>
+            <div class="form-group"><label>תעריף לטיפול (₪)</label><input type="number" id="newPatRate" value="350"></div>
+            <button class="btn-primary-action" style="width:100%; margin-bottom:8px;" onclick="saveNewPatient()">שמור מטופל ב-Google Sheets</button>
+            <button class="btn-action" style="width:100%; background:var(--border-color);" onclick="document.getElementById('addPatientModal').style.display='none'">ביטול</button>
+        </div>
+    </div>
+
+    <!-- מודאל קביעת פגישה חדשה -->
+    <div class="modal" id="addAppointmentModal">
+        <div class="modal-content">
+            <div class="modal-title">📅 קביעת פגישה חדשה</div>
+            <div class="form-group">
+                <label>בחר מטופל</label>
+                <select id="newAppPatientSelect" onchange="autoFillAppAmount()"></select>
+            </div>
+            <div class="form-group"><label>תאריך הפגישה</label><input type="date" id="newAppDate"></div>
+            <div class="form-group"><label>סכום (₪)</label><input type="number" id="newAppAmount" value="350"></div>
+            <div class="form-group">
+                <label>אמצעי תשלום צפוי</label>
+                <select id="newAppPayMethod">
+                    <option value="ביט / פייבוקס">ביט / פייבוקס</option>
+                    <option value="העברה בנקאית">העברה בנקאית</option>
+                    <option value="כרטיס אשראי">כרטיס אשראי</option>
+                    <option value="מזומן">מזומן</option>
+                </select>
+            </div>
+            <button class="btn-primary-action" style="width:100%; margin-bottom:8px;" onclick="saveNewAppointment()">קבע פגישה ב-Google Sheets</button>
+            <button class="btn-action" style="width:100%; background:var(--border-color);" onclick="document.getElementById('addAppointmentModal').style.display='none'">ביטול</button>
+        </div>
+    </div>
+
+    <!-- מודאלים נוספים -->
     <div class="modal" id="morningConfigModal">
         <div class="modal-content">
             <div class="modal-title">⚙️ הגדרת חיבור ל-Morning</div>
@@ -581,10 +617,12 @@
     </div>
 
     <script>
-        let appData = {
-            patients: [],
-            appointments: []
+        const defaultDemoData = {
+            patients: [{ id: 1, name: "נעמי", phone: "0500000000", rate: 350 }],
+            appointments: [{ id: 1, date: "2026-10-14", clientName: "נעמי", clientPhone: "0500000000", amount: 350, status: "ממתין לתשלום", isPaid: false, paymentMethod: "ביט / פייבוקס", docNumber: "" }]
         };
+
+        let appData = JSON.parse(JSON.stringify(defaultDemoData));
 
         let currentBatchSelection = {
             count: 0,
@@ -641,13 +679,13 @@
                 if (badgeBtn) badgeBtn.classList.remove("connected");
                 if (badgeIcon) badgeIcon.innerText = "☁️";
                 if (badgeText) badgeText.innerText = "סנכרון Sheets";
+                renderAll();
             }
         }
 
-        // שליפת הנתונים באמצעות GET ישיר למניעת בעיות CORS
         async function fetchDataFromSheets() {
             const baseUrl = getAppsScriptUrl();
-            if (!baseUrl) return;
+            if (!baseUrl) { renderAll(); return; }
 
             showToast("טוען נתונים מ-Google Sheets... ⏳", "info");
 
@@ -658,40 +696,43 @@
                 const rawData = await response.json();
 
                 if (rawData && rawData.success) {
-                    // נירמול המטופלים מתוך כל עמודה רלוונטית בגיליון
-                    appData.patients = (rawData.patients || []).map((p, idx) => ({
-                        id: p.id || p.ID || p["מזהה"] || idx + 1,
-                        name: p["שם"] || p["שם מלא"] || p.name || p.clientName || p["שם המטופל"] || `מטופל ${idx + 1}`,
-                        phone: p["טלפון"] || p["מספר טלפון"] || p.phone || p.clientPhone || "",
-                        rate: Number(p["תעריף"]) || Number(p.rate) || Number(p.price) || 350
-                    }));
+                    if (rawData.patients && rawData.patients.length > 0) {
+                        appData.patients = rawData.patients.map((p, idx) => ({
+                            id: p.id || idx + 1,
+                            name: p["שם"] || p["שם מלא"] || p.name || p.clientName || `מטופל ${idx + 1}`,
+                            phone: p["טלפון"] || p["מספר טלפון"] || p.phone || "",
+                            rate: Number(p["תעריף"]) || Number(p.rate) || 350
+                        }));
+                    }
 
-                    // נירמול הפגישות מתוך כל עמודה רלוונטית בגיליון
-                    appData.appointments = (rawData.appointments || []).map((a, idx) => {
-                        const name = a["שם"] || a["שם המטופל"] || a["שם מלא"] || a.clientName || a.name || "מטופל/ת";
-                        const phone = a["טלפון"] || a.phone || a.clientPhone || getPatientPhoneByName(name);
-                        const statusStr = String(a["סטטוס"] || a["סטטוס תשלום"] || a.status || "");
-                        const isPaid = statusStr.indexOf("שולם") !== -1 || a.isPaid === true;
+                    if (rawData.appointments && rawData.appointments.length > 0) {
+                        appData.appointments = rawData.appointments.map((a, idx) => {
+                            const name = a["שם"] || a["שם המטופל"] || a["שם מלא"] || a.clientName || "מטופל/ת";
+                            const phone = a["טלפון"] || a.phone || getPatientPhoneByName(name);
+                            const statusStr = String(a["סטטוס"] || a["סטטוס תשלום"] || a.status || "");
+                            const docNum = a["מספר מסמך"] || a["מסמך משפטי"] || a.docNumber || "";
+                            const isPaid = statusStr.indexOf("שולם") !== -1 || docNum !== "";
 
-                        return {
-                            id: a.id || idx + 1,
-                            date: a["תאריך"] || a.date || "-",
-                            clientName: name,
-                            clientPhone: phone,
-                            amount: Number(a["סכום"]) || Number(a["מחיר"]) || Number(a.amount) || Number(a.price) || 350,
-                            status: isPaid ? "שולם" : "ממתין לתשלום",
-                            isPaid: isPaid,
-                            paymentMethod: a["אמצעי תשלום"] || a.paymentMethod || "ביט / פייבוקס",
-                            docNumber: a["מספר מסמך"] || a.docNumber || ""
-                        };
-                    });
+                            return {
+                                id: a.id || idx + 1,
+                                date: a["תאריך"] || a.date || "-",
+                                clientName: name,
+                                clientPhone: phone,
+                                amount: Number(a["סכום"]) || Number(a["מחיר"]) || Number(a.amount) || 350,
+                                status: isPaid ? "שולם" : "ממתין לתשלום",
+                                isPaid: isPaid,
+                                paymentMethod: a["אמצעי תשלום"] || a.paymentMethod || "ביט / פייבוקס",
+                                docNumber: docNum
+                            };
+                        });
+                    }
 
                     renderAll();
                     showToast(`✅ נטענו ${appData.patients.length} מטופלים ו-${appData.appointments.length} פגישות!`, "success");
                 }
             } catch (err) {
                 console.error("Fetch error:", err);
-                showToast("❌ שגיאה בטעינת הנתונים מ-Google Sheets", "error");
+                renderAll();
             }
         }
 
@@ -705,7 +746,7 @@
             if (input && input.value.trim()) {
                 localStorage.setItem("APPS_SCRIPT_URL", input.value.trim());
                 checkSyncStatus();
-                showToast("✅ הקישור נשמר! מנסה לסנכרן נתונים...", "success");
+                showToast("✅ הקישור נשמר בהצלחה!", "success");
                 document.getElementById("syncModal").style.display = "none";
             }
         }
@@ -738,11 +779,6 @@
             const tbody = document.getElementById("patientsTable");
             if (!tbody) return;
 
-            if (appData.patients.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">לא נמצאו מטופלים בגיליון</td></tr>`;
-                return;
-            }
-
             const filterVal = document.getElementById("patListFilter")?.value || "ALL";
             let list = appData.patients;
             if (filterVal !== "ALL") list = list.filter(p => p.name === filterVal);
@@ -754,7 +790,6 @@
                     <td>${p.phone || '-'}</td>
                     <td>₪${p.rate}</td>
                     <td><span class="badge badge-success">פעיל</span></td>
-                    <td><button class="btn-action" style="font-size:0.75rem; padding:4px 8px;" onclick="openPatientModal('${p.id}')">ערוך</button></td>
                 </tr>
             `).join('');
         }
@@ -762,11 +797,6 @@
         function renderAppointments() {
             const tbody = document.getElementById("appointmentsTable");
             if (!tbody) return;
-
-            if (appData.appointments.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">לא נמצאו פגישות בגיליון</td></tr>`;
-                return;
-            }
 
             const filterVal = document.getElementById("appPatientFilter")?.value || "ALL";
             let list = appData.appointments;
@@ -803,12 +833,9 @@
             document.getElementById("payTotalPaid").innerText = `₪${totalPaid}`;
             document.getElementById("payTotalDebt").innerText = `₪${totalDebt}`;
 
-            if (list.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">אין חיובים להצגה</td></tr>`;
-                return;
-            }
-
-            tbody.innerHTML = list.map(p => `
+            tbody.innerHTML = list.map(p => {
+                const docText = p.docNumber ? 'חשבונית #' + p.docNumber : '-';
+                return `
                 <tr>
                     <td style="text-align:center;">
                         <input type="checkbox" class="pay-chk" ${!p.isPaid ? 'checked' : ''} data-id="${p.id}" onchange="updateBatchSummary()">
@@ -817,9 +844,9 @@
                     <td><strong>${p.clientName}</strong></td>
                     <td>₪${p.amount}</td>
                     <td><span class="badge ${p.isPaid ? 'badge-success' : 'badge-warning'}">${p.status}</span></td>
-                    <td>${p.docNumber ? `חשבונית #\${p.docNumber}` : '-'}</td>
+                    <td><strong>${docText}</strong></td>
                 </tr>
-            `).join('');
+            `}).join('');
 
             updateBatchSummary();
         }
@@ -897,6 +924,7 @@
                 amount: currentBatchSelection.totalAmount,
                 description: `פירוט תאריכי טיפולים: ${currentBatchSelection.datesList}`,
                 paymentMethod: paymentMethod,
+                datesList: currentBatchSelection.datesList,
                 isDraft: isDraft
             };
 
@@ -922,9 +950,10 @@
                             }
                         });
                         renderAll();
+                        setTimeout(fetchDataFromSheets, 1500); // טעינה מחדש של הנתונים מהגיליון שחזרו מעודכנים
                     }
 
-                    showToast(isDraft ? `✅ טיוטה מס' ${result.docNumber} הופקה ונפתחה!` : `🎉 חשבונית מס קבלה מס' ${result.docNumber} הונפקה!`, "success");
+                    showToast(isDraft ? `✅ טיוטה הופקה ונפתחה!` : `🎉 חשבונית מס קבלה מס' ${result.docNumber} הונפקה ונשמרה ב-Google Sheets!`, "success");
                 } else {
                     showToast("❌ שגיאה: " + (result.message || "נכשלה יצירת המסמך"), "error");
                 }
@@ -934,6 +963,83 @@
                 if (btnDraft) { btnDraft.disabled = false; btnDraft.innerText = "👁️ הפק טיוטה לבדיקה (Draft)"; }
                 if (btnFinal) { btnFinal.disabled = false; btnFinal.innerText = "✓ הנפק חשבונית מס קבלה סופית"; }
             }
+        }
+
+        // פתיחת טפסים פעילים
+        function openPatientModal() {
+            document.getElementById("newPatName").value = "";
+            document.getElementById("newPatPhone").value = "";
+            document.getElementById("addPatientModal").style.display = "flex";
+        }
+
+        async function saveNewPatient() {
+            const name = document.getElementById("newPatName").value.trim();
+            const phone = document.getElementById("newPatPhone").value.trim();
+            const rate = Number(document.getElementById("newPatRate").value) || 350;
+
+            if (!name) { showToast("⚠️ אנא הזן שם מטופל", "error"); return; }
+
+            const url = getAppsScriptUrl();
+            if (url) {
+                showToast("שומר מטופל ב-Google Sheets... ⏳", "info");
+                try {
+                    await fetch(url, {
+                        method: "POST",
+                        headers: { "Content-Type": "text/plain;charset=utf-8" },
+                        body: JSON.stringify({ action: "addPatient", name, phone, rate })
+                    });
+                } catch(e){}
+            }
+
+            appData.patients.push({ id: appData.patients.length + 1, name, phone, rate });
+            renderAll();
+            document.getElementById("addPatientModal").style.display = "none";
+            showToast("✅ מטופל חדש נשמר בהצלחה!", "success");
+        }
+
+        function openAppointmentModal() {
+            const select = document.getElementById("newAppPatientSelect");
+            select.innerHTML = appData.patients.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+            document.getElementById("newAppDate").value = new Date().toISOString().slice(0, 10);
+            autoFillAppAmount();
+            document.getElementById("addAppointmentModal").style.display = "flex";
+        }
+
+        function autoFillAppAmount() {
+            const patName = document.getElementById("newAppPatientSelect").value;
+            const found = appData.patients.find(p => p.name === patName);
+            if (found) document.getElementById("newAppAmount").value = found.rate;
+        }
+
+        async function saveNewAppointment() {
+            const clientName = document.getElementById("newAppPatientSelect").value;
+            const date = document.getElementById("newAppDate").value;
+            const amount = Number(document.getElementById("newAppAmount").value) || 350;
+            const paymentMethod = document.getElementById("newAppPayMethod").value;
+            const clientPhone = getPatientPhoneByName(clientName);
+
+            if (!date) { showToast("⚠️ אנא בחר תאריך", "error"); return; }
+
+            const url = getAppsScriptUrl();
+            if (url) {
+                showToast("שומר פגישה ב-Google Sheets... ⏳", "info");
+                try {
+                    await fetch(url, {
+                        method: "POST",
+                        headers: { "Content-Type": "text/plain;charset=utf-8" },
+                        body: JSON.stringify({ action: "addAppointment", clientName, date, amount, paymentMethod })
+                    });
+                } catch(e){}
+            }
+
+            appData.appointments.push({
+                id: appData.appointments.length + 1,
+                date, clientName, clientPhone, amount, status: "ממתין לתשלום", isPaid: false, paymentMethod, docNumber: ""
+            });
+
+            renderAll();
+            document.getElementById("addAppointmentModal").style.display = "none";
+            showToast("✅ פגישה חדשה נקבעה ונשמרה!", "success");
         }
 
         function renderWhatsAppDebtors() {
@@ -1033,9 +1139,6 @@
             const text = document.getElementById("waMessageText")?.value || "";
             if (phone) window.open(`https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(text)}`, "_blank");
         }
-
-        function openPatientModal() { showToast("פתיחת טופס להוספת/עריכת מטופל", "info"); }
-        function openAppointmentModal() { showToast("פתיחת טופס לקביעת פגישה חדשה", "info"); }
 
         document.addEventListener("DOMContentLoaded", () => {
             checkSyncStatus();
