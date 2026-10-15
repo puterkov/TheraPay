@@ -3,7 +3,7 @@ import { today, money, validDate, defaultSelection, selectedAppointments, total,
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const demo = new URLSearchParams(location.search).get('demo') === '1';
-const state = { patients:[], appointments:[], patientId:'', month:today().slice(0,7), selected:new Set(), view:'collection', connected:false, environment:'sandbox', morningConfigured:false, busy:false };
+const state = { patients:[], appointments:[], patientId:'', month:today().slice(0,7), selected:new Set(), view:'dashboard', connected:false, environment:'sandbox', morningConfigured:false, busy:false };
 let attempt = readAttempt();
 function readAttempt() { try { return JSON.parse(sessionStorage.getItem('THERAPAY_ATTEMPT') || 'null'); } catch { return null; } }
 function notice(text, error = false) { $('notice').textContent = text; $('notice').hidden = false; $('notice').classList.toggle('error', error); }
@@ -47,7 +47,7 @@ async function load() {
     if (!patient()) { state.patientId = state.patients[0]?.id || ''; resetSelection(); }
     state.selected = new Set(chosen().map(a => a.id));
     render();
-    notice(state.environment === 'sandbox' ? 'מחובר לגיליון · Morning בסביבת בדיקות' : 'הנתונים עודכנו בהצלחה');
+    notice(`נטענו ${state.patients.length} מטופלים ו־${state.appointments.length} פגישות מהגיליון${state.environment === 'sandbox' ? ' · Morning בסביבת בדיקות' : ''}`);
   } catch (error) { state.connected = false; render(); notice(error.message, true); throw error; }
 }
 
@@ -95,13 +95,25 @@ function updateSelection() {
 function render() {
   $('connection').textContent = demo ? 'נתוני דוגמה' : state.connected ? 'מחובר · הגדרות' : 'התחברות';
   $('onboarding').hidden = state.connected || demo;
+  renderDashboard();
   renderCollection();
   $('patient-list').innerHTML = state.patients.map(p => `<article class="patient-card"><div class="row"><strong>${esc(p.name)}</strong><span>${esc(money(p.rate))} לפגישה</span></div><div class="small muted">${esc(p.phone)} · ${esc(p.status)}</div><button class="secondary" data-patient="${esc(p.id)}">פגישות וגבייה ←</button></article>`).join('') || '<div class="empty">טרם נוספו מטופלים.</div>';
-  $('all-appointments').innerHTML = [...state.appointments].sort((a,b) => b.date.localeCompare(a.date)).map(a => card(a)).join('') || '<div class="empty">טרם נוספו פגישות.</div>';
+  $('all-appointments').innerHTML = [...state.appointments].sort((a,b) => b.date.localeCompare(a.date)).map(a => card(a)).join('') || `<div class="empty">${state.connected ? 'השרת החזיר 0 פגישות. יש לבדוק שבגיליון Appointments המחובר יש שורות מתחת לכותרות.' : 'לא נטענו פגישות. יש להתחבר לגיליון כדי לראות אותן.'}</div>`;
   const docs = new Map();
   state.appointments.filter(a => a.docNumber).forEach(a => { const key = `${a.clientName}|${a.docNumber}`; if (!docs.has(key)) docs.set(key,{...a,amount:0,count:0}); const d=docs.get(key); d.amount += a.amount; d.count++; });
   $('document-list').innerHTML = [...docs.values()].map(d => `<article class="document-card"><div class="row"><strong>${esc(d.clientName)}</strong><span>${esc(money(d.amount))}</span></div><div class="small muted">מסמך ${esc(d.docNumber)} · ${d.count} פגישות</div>${safeLink(d.pdfUrl) ? `<a target="_blank" rel="noopener noreferrer" href="${esc(safeLink(d.pdfUrl))}">צפייה במסמך ↗</a>` : '<div class="small muted">קישור למסמך לא נשמר בגיליון</div>'}</article>`).join('') || '<div class="empty">טרם נשמרו מסמכים בגיליון.</div>';
   view(state.view);
+}
+
+function renderDashboard() {
+  $('dashboard-date').textContent = new Intl.DateTimeFormat('he-IL',{dateStyle:'full',timeZone:'Asia/Jerusalem'}).format(new Date());
+  $('stat-patients').textContent = state.patients.length;
+  $('stat-appointments').textContent = state.appointments.length;
+  $('stat-paid').textContent = money(total(state.appointments.filter(a=>a.isPaid)));
+  $('stat-debt').textContent = money(total(state.appointments.filter(a=>!a.isPaid)));
+  const debtors=state.patients.map(p=>({patient:p,apps:state.appointments.filter(a=>a.patientId===p.id&&!a.isPaid)})).filter(d=>d.apps.length);
+  $('dashboard-debtors').innerHTML=debtors.map(d=>`<button class="debtor-row" data-patient="${esc(d.patient.id)}"><span>${esc(d.patient.name)}<small>${d.apps.length} פגישות ממתינות לתשלום</small></span><strong>${esc(money(total(d.apps)))}</strong><span aria-hidden="true">←</span></button>`).join('') || `<p class="small">${state.connected||demo ? (state.appointments.length ? 'אין פגישות שממתינות לתשלום.' : 'לא התקבלו פגישות מהגיליון. לאחר בירור הטעינה, יתרות המטופלים יופיעו כאן.') : 'יתרות המטופלים יופיעו לאחר החיבור.'}</p>`;
+  $('data-status').textContent=demo?'מצב הדגמה · הנתונים בדויים':state.connected?`חיבור לגיליון פעיל · ${state.patients.length} מטופלים · ${state.appointments.length} פגישות`:'אין חיבור פעיל לגיליון. לחצו על התחברות למעלה.';
 }
 
 function openDialog(name) {
