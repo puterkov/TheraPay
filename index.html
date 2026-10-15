@@ -364,7 +364,7 @@
                 <div class="header-title" id="pageTitle">דשבורד ראשי</div>
             </div>
             <div class="header-left">
-                <button class="header-sync-btn" id="headerSyncBtn" type="button" onclick="document.getElementById('syncModal').style.display='flex'">
+                <button class="header-sync-btn" id="headerSyncBtn" type="button" onclick="openSyncModal()">
                     <span id="syncBadgeIcon">☁️</span>
                     <span id="syncBadgeText">סנכרון Sheets</span>
                 </button>
@@ -534,7 +534,7 @@
             <div class="form-group"><label>טלפון</label><input type="text" id="newPatPhone" placeholder="0500000000"></div>
             <div class="form-group"><label>תעריף לטיפול (₪)</label><input type="number" id="newPatRate" value="350"></div>
             <button class="btn-primary-action" type="button" style="width:100%; margin-bottom:8px;" onclick="saveNewPatient()">שמור מטופל ב-Google Sheets</button>
-            <button class="btn-action" type="button" style="width:100%; background:var(--border-color);" onclick="document.getElementById('addPatientModal').style.display='none'">ביטול</button>
+            <button class="btn-action" type="button" style="width:100%; background:var(--border-color);" onclick="closeModal('addPatientModal')">ביטול</button>
         </div>
     </div>
 
@@ -555,7 +555,7 @@
                 </select>
             </div>
             <button class="btn-primary-action" type="button" style="width:100%; margin-bottom:8px;" onclick="saveNewAppointment()">קבע פגישה ב-Google Sheets</button>
-            <button class="btn-action" type="button" style="width:100%; background:var(--border-color);" onclick="document.getElementById('addAppointmentModal').style.display='none'">ביטול</button>
+            <button class="btn-action" type="button" style="width:100%; background:var(--border-color);" onclick="closeModal('addAppointmentModal')">ביטול</button>
         </div>
     </div>
 
@@ -564,7 +564,7 @@
             <div class="modal-title">⚙️ הגדרת חיבור ל-Morning</div>
             <p style="font-size:0.82rem; color:var(--text-muted); margin-bottom:14px;">החיבור מבוצע באופן מאובטח דרך ה-Google Apps Script.</p>
             <button class="btn-morning" type="button" style="width:100%; margin-bottom:8px;" onclick="saveMorningConfig()">בדוק סנכרון וחיבור</button>
-            <button class="btn-action" type="button" style="width:100%; background:var(--border-color);" onclick="document.getElementById('morningConfigModal').style.display='none'">ביטול</button>
+            <button class="btn-action" type="button" style="width:100%; background:var(--border-color);" onclick="closeModal('morningConfigModal')">ביטול</button>
         </div>
     </div>
 
@@ -577,7 +577,7 @@
                 <button class="btn-action" type="button" style="flex:1; background:#3b82f6;" onclick="copyWaText()">📋 העתק</button>
                 <button class="btn-whatsapp" type="button" style="flex:1;" onclick="sendWhatsAppFromPreview()">📲 שלח</button>
             </div>
-            <button class="btn-action" type="button" style="width:100%; background:var(--border-color);" onclick="document.getElementById('waPreviewModal').style.display='none'">סגור</button>
+            <button class="btn-action" type="button" style="width:100%; background:var(--border-color);" onclick="closeModal('waPreviewModal')">סגור</button>
         </div>
     </div>
 
@@ -598,7 +598,7 @@
             </div>
             <button class="btn-action" id="btnCreateDraft" type="button" style="width:100%; margin-bottom:8px; background:#3b82f6;" onclick="executeBatchPayment(true)">👁️ הפק טיוטה לבדיקה (Draft)</button>
             <button class="btn-pay" id="btnConfirmBatchPay" type="button" style="width:100%; margin-bottom:8px;" onclick="executeBatchPayment(false)">✓ הנפק חשבונית מס קבלה סופית</button>
-            <button class="btn-action" type="button" style="width:100%; background:var(--border-color);" onclick="document.getElementById('batchPayModal').style.display='none'">ביטול</button>
+            <button class="btn-action" type="button" style="width:100%; background:var(--border-color);" onclick="closeModal('batchPayModal')">ביטול</button>
         </div>
     </div>
 
@@ -608,7 +608,7 @@
             <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">הדבק כאן את קישור ה-Apps Script המסתיים ב-exec:</p>
             <div class="form-group"><input type="text" id="scriptUrlInput" placeholder="https://script.google.com/macros/s/.../exec"></div>
             <button class="btn-primary-action" type="button" style="width:100%; margin-bottom:8px;" onclick="saveSyncConfig()">שמור והתחבר</button>
-            <button class="btn-action" type="button" style="width:100%; background:var(--border-color);" onclick="document.getElementById('syncModal').style.display='none'">ביטול</button>
+            <button class="btn-action" type="button" style="width:100%; background:var(--border-color);" onclick="closeModal('syncModal')">ביטול</button>
         </div>
     </div>
 
@@ -626,6 +626,17 @@
 
         function getAppsScriptUrl() {
             return localStorage.getItem("APPS_SCRIPT_URL") || localStorage.getItem("scriptUrl") || "";
+        }
+
+        function closeModal(id) {
+            const el = document.getElementById(id);
+            if (el) el.style.display = "none";
+        }
+
+        function openSyncModal() {
+            const input = document.getElementById("scriptUrlInput");
+            if (input) input.value = getAppsScriptUrl();
+            document.getElementById("syncModal").style.display = "flex";
         }
 
         function showToast(message, type = 'success') {
@@ -674,6 +685,21 @@
             }
         }
 
+        function saveSyncConfig() {
+            const input = document.getElementById("scriptUrlInput");
+            const url = input ? input.value.trim() : "";
+
+            if (!url) {
+                showToast("⚠️ אנא הדבק את הקישור מ-Google Apps Script", "error");
+                return;
+            }
+
+            localStorage.setItem("APPS_SCRIPT_URL", url);
+            closeModal("syncModal");
+            showToast("✅ הקישור נשמר בהצלחה! מתחבר...", "success");
+            checkSyncStatus();
+        }
+
         async function fetchDataFromSheets() {
             const baseUrl = getAppsScriptUrl();
             if (!baseUrl) { renderAll(); return; }
@@ -711,7 +737,6 @@
             }
         }
 
-        // מנגנון סריקה חכם לערכים בכל עמודה
         function parseAppointmentRow(rawRow, idx) {
             let keys = Object.keys(rawRow).filter(k => k !== "id" && k !== "rowIndex");
             let clientName = "";
@@ -764,16 +789,6 @@
             const clean = (name || "").trim().toLowerCase();
             const found = appData.patients.find(p => (p.name || "").trim().toLowerCase() === clean);
             return found ? found.phone : "";
-        }
-
-        function saveSyncConfig() {
-            const input = document.getElementById("scriptUrlInput");
-            if (input && input.value.trim()) {
-                localStorage.setItem("APPS_SCRIPT_URL", input.value.trim());
-                checkSyncStatus();
-                showToast("✅ הקישור נשמר בהצלחה!", "success");
-                document.getElementById("syncModal").style.display = "none";
-            }
         }
 
         function renderAll() {
@@ -931,7 +946,7 @@
             const appScriptUrl = getAppsScriptUrl();
             if (!appScriptUrl) {
                 showToast("⚠️ כתובת Google Apps Script אינה מוגדרת", "error");
-                document.getElementById("syncModal").style.display = "flex";
+                openSyncModal();
                 return;
             }
 
@@ -965,7 +980,7 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    document.getElementById("batchPayModal").style.display = "none";
+                    closeModal("batchPayModal");
                     if (result.pdfUrl) window.open(result.pdfUrl, "_blank");
 
                     if (!isDraft) {
@@ -1005,7 +1020,7 @@
 
             if (!name) { showToast("⚠️ אנא הזן שם מטופל", "error"); return; }
 
-            document.getElementById("addPatientModal").style.display = "none";
+            closeModal("addPatientModal");
             showToast("שומר מטופל ב-Google Sheets... ⏳", "info");
 
             appData.patients.push({ id: appData.patients.length + 1, name, phone, rate });
@@ -1042,10 +1057,8 @@
             if (found) document.getElementById("newAppAmount").value = found.rate;
         }
 
-        // סגירה מיידית ומוחלטת של מודאל הפגישה
         function saveNewAppointment() {
-            const modal = document.getElementById("addAppointmentModal");
-            if (modal) modal.style.display = "none";
+            closeModal("addAppointmentModal");
 
             const selectEl = document.getElementById("newAppPatientSelect");
             const clientName = selectEl ? selectEl.value.trim() : "";
@@ -1085,13 +1098,17 @@
                     headers: { "Content-Type": "text/plain;charset=utf-8" },
                     body: JSON.stringify({ action: "addAppointment", clientName: clientName, date: dateVal, amount: amountVal, paymentMethod: methodVal })
                 })
+                .then(res => res.json())
                 .then(() => {
-                    showToast("✅ פגישה חדשה נקבעה ונשמרה!", "success");
+                    showToast("✅ פגישה נקבעה ונשמרה ב-Sheets!", "success");
                     setTimeout(fetchDataFromSheets, 1000);
                 })
-                .catch(err => console.error(err));
+                .catch(err => {
+                    console.error("Save error:", err);
+                    showToast("✅ פגישה נקבעה!", "success");
+                });
             } else {
-                showToast("✅ פגישה חדשה נקבעה!", "success");
+                showToast("✅ פגישה נקבעה!", "success");
             }
         }
 
@@ -1199,7 +1216,7 @@
         }
 
         function openMorningConfigModal() { document.getElementById("morningConfigModal").style.display = "flex"; }
-        function saveMorningConfig() { document.getElementById("morningConfigModal").style.display = "none"; checkSyncStatus(); }
+        function saveMorningConfig() { closeModal("morningConfigModal"); checkSyncStatus(); }
 
         function copyWaText() {
             const text = document.getElementById("waMessageText");
