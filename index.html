@@ -339,8 +339,8 @@
 
     <script>
         window.appData = {
-            patients: [{ id: 1, name: "נעמי", phone: "0500000000", rate: 350 }],
-            appointments: [{ id: 1, date: "2026-10-14", clientName: "נעמי", clientPhone: "0500000000", amount: 350, status: "ממתין לתשלום", isPaid: false, paymentMethod: "ביט / פייבוקס", docNumber: "" }]
+            patients: [],
+            appointments: []
         };
 
         window.currentBatchSelection = { count: 0, totalAmount: 0, clientName: "", clientPhone: "", datesList: "", ids: [] };
@@ -528,41 +528,13 @@
             var statusVal = rawRow["סטטוס תשלום"] || rawRow["סטטוס"] || rawRow.status || "";
             var docNum = rawRow["מספר חשבונית"] || rawRow.docNumber || "";
 
-            if (!clientName || !dateVal) {
-                var keys = Object.keys(rawRow).filter(function(k) { return k !== "id" && k !== "rowIndex"; });
-                var allVals = keys.map(function(k) { return String(rawRow[k] || "").trim(); }).filter(function(v) { return v !== ""; });
-
-                for (var i = 0; i < allVals.length; i++) {
-                    var val = allVals[i];
-                    if (val.startsWith("APP-")) continue;
-
-                    var isDate = val.match(/^\d{4}-\d{2}-\d{2}$/) || val.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}$/);
-
-                    if (isDate) {
-                        if (!dateVal) dateVal = val;
-                    }
-                    else if (!isNaN(val) && Number(val) >= 50 && Number(val) <= 10000) {
-                        if (!amountVal || amountVal === 350) amountVal = Number(val);
-                    }
-                    else if (val.includes("ביט") || val.includes("פייבוקס") || val.includes("שולם") || val.includes("ממתין") || val.includes("העברה") || val.includes("אשראי")) {
-                        if (!statusVal) statusVal = val;
-                    }
-                    else if (val.match(/^\d{4,8}$/) && !docNum) {
-                        docNum = val;
-                    }
-                    else if (!isDate && isNaN(val) && !val.includes("http") && !val.includes("חשבונית") && val.length >= 2) {
-                        if (!clientName) clientName = val;
-                    }
-                }
-            }
-
             if (!clientName) clientName = "מטופל/ת";
             if (!dateVal) dateVal = "-";
 
             var isPaid = String(statusVal).includes("שולם") || (docNum !== "" && docNum !== "-");
 
             return {
-                id: rawRow["מזהה פגישה"] || rawRow.id || (idx + 1),
+                id: String(rawRow["מזהה פגישה"] || rawRow.id || (idx + 1)),
                 date: dateVal,
                 clientName: clientName,
                 clientPhone: getPatientPhoneByName(clientName),
@@ -670,7 +642,7 @@
             if (elPaid) elPaid.innerText = "₪" + totalPaid;
             if (elDebt) elDebt.innerText = "₪" + totalDebt;
 
-            var selectedIds = (window.currentBatchSelection && window.currentBatchSelection.ids) ? window.currentBatchSelection.ids : [];
+            var selectedIds = (window.currentBatchSelection && window.currentBatchSelection.ids) ? window.currentBatchSelection.ids.map(String) : [];
 
             tbody.innerHTML = list.map(function(p) {
                 var docText = p.docNumber ? ('חשבונית #' + p.docNumber) : '-';
@@ -723,7 +695,23 @@
         }
 
         function openSinglePayModal(appId) {
-            window.currentBatchSelection.ids = [String(appId)];
+            var appIdStr = String(appId);
+            var foundApp = window.appData.appointments.find(function(a) { return String(a.id) === appIdStr; });
+
+            if (foundApp) {
+                var selectEl = document.getElementById("paymentPatientSelect");
+                if (selectEl) selectEl.value = foundApp.clientName;
+            }
+
+            window.currentBatchSelection = {
+                ids: [appIdStr],
+                clientName: foundApp ? foundApp.clientName : "",
+                clientPhone: foundApp ? foundApp.clientPhone : "",
+                totalAmount: foundApp ? foundApp.amount : 0,
+                count: 1,
+                datesList: foundApp ? (foundApp.date ? foundApp.date.slice(5).replace('-', '/') : '') : ""
+            };
+
             switchTab('payments');
             renderPatientPayments();
             openBatchPayModal();
