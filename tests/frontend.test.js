@@ -57,3 +57,18 @@ test('explicit authentication failure requires login again',async()=>{
   await assert.rejects(f.run('load()'));
   assert.equal(f.run('state.connected'),false);assert.equal(f.sessionStorage.getItem('THERAPAY_ACCESS_TOKEN'),null);
 });
+test('appointment filters combine patient and named month/year and survive refresh',async()=>{
+  const f=fixture();f.data.patients.push({id:'p2',name:'מטופל נוסף',phone:'0521234567',rate:400,status:'פעיל'});
+  f.data.appointments.push({id:'a3',patientId:'p2',clientName:'מטופל נוסף',date:'2020-01-03',amount:400,isPaid:false},{id:'a4',patientId:'p1',clientName:'בדיקה',date:'2021-01-03',amount:350,isPaid:false});
+  await f.connect();assert.match(f.elements['appointments-month'].innerHTML,/ינואר 2020/);assert.match(f.elements['appointments-month'].innerHTML,/ינואר 2021/);
+  f.elements['appointments-patient'].listeners.change({target:{value:'p1'}});
+  f.elements['appointments-month'].listeners.change({target:{value:'2020-01'}});
+  assert.equal((f.elements['all-appointments'].innerHTML.match(/class="appointment-card"/g)||[]).length,2);
+  assert.ok(!f.elements['all-appointments'].innerHTML.includes('מטופל נוסף'));
+  f.queue.push(structuredClone(f.data));await f.run('load()');
+  assert.equal(f.elements['appointments-patient'].value,'p1');assert.equal(f.elements['appointments-month'].value,'2020-01');
+  f.elements['appointments-patient'].listeners.change({target:{value:'p2'}});
+  assert.equal((f.elements['all-appointments'].innerHTML.match(/class="appointment-card"/g)||[]).length,1);
+  f.elements['appointments-month'].listeners.change({target:{value:'2021-01'}});
+  assert.match(f.elements['all-appointments'].innerHTML,/אין פגישות להצגה/);
+});

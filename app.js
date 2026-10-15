@@ -3,7 +3,7 @@ import { today, money, validDate, defaultSelection, selectedAppointments, total,
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const demo = new URLSearchParams(location.search).get('demo') === '1';
-const state = { patients:[], appointments:[], patientId:'', month:today().slice(0,7), selected:new Set(), view:'dashboard', connected:false, loaded:false, loading:false, refreshFailed:false, environment:'sandbox', morningConfigured:false, busy:false };
+const state = { patients:[], appointments:[], patientId:'', month:today().slice(0,7), appointmentsPatient:'ALL', appointmentsMonth:'ALL', selected:new Set(), view:'dashboard', connected:false, loaded:false, loading:false, refreshFailed:false, environment:'sandbox', morningConfigured:false, busy:false };
 let attempt = readAttempt();
 function readAttempt() { try { return JSON.parse(sessionStorage.getItem('THERAPAY_ATTEMPT') || 'null'); } catch { return null; } }
 function notice(text, error = false) { $('notice').textContent = text; $('notice').hidden = false; $('notice').classList.toggle('error', error); }
@@ -53,7 +53,7 @@ async function load() {
     if (!patient()) { state.patientId = state.patients[0]?.id || ''; resetSelection(); }
     state.selected = new Set(chosen().map(a => a.id));
     render();
-    notice(`נטענו ${state.patients.length} מטופלים ו־${state.appointments.length} פגישות מהגיליון${state.environment === 'sandbox' ? ' · Morning בסביבת בדיקות' : ''}`);
+    $('notice').hidden=true;
   } catch (error) {
     // A failed read is not a logout. Only an explicit authentication failure invalidates access.
     if(error.code==='AUTH'){state.connected=false;sessionStorage.removeItem('THERAPAY_ACCESS_TOKEN');}
@@ -79,9 +79,6 @@ function card(a, selectable = false) {
 }
 function renderCollection() {
   $('month').value = state.month;
-  const debt = state.appointments.filter(a => !a.isPaid && validDate(a.date) && a.date < state.month+'-01');
-  $('debt-total').textContent = money(total(debt));
-  $('debt-count').textContent = `${debt.length} פגישות · כלל המטופלים`;
   $('patient-filter').innerHTML = '<option value="">בחירת מטופל</option>' + state.patients.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
   $('patient-filter').value = state.patientId;
   const p = patient();
@@ -101,7 +98,7 @@ function renderCollection() {
 }
 function updateSelection() {
   const list = chosen();
-  $('selection-count').textContent = `${list.length} פגישות נבחרו`;
+  $('selection-count').textContent = patient()?`${patient().name} · ${list.length} פגישות נבחרו`:'יש לבחור מטופל';
   $('selection-total').textContent = money(total(list));
   $('whatsapp').disabled = !list.length || state.busy || state.loading;
   $('payment').disabled = !list.length || state.busy || state.loading || !(demo || state.connected);
@@ -110,11 +107,12 @@ function renderConnectionStatus(){
   $('connection').textContent=demo?'מצב הדגמה':state.loading?'מרענן נתונים…':state.connected?(state.refreshFailed?'מחובר · הרענון האחרון לא הושלם':'מחובר לקליניקה'):'לא מחובר · יש להזין קוד גישה';
 }
 function render() {
+  $('demo-badge').hidden=!demo;
   renderConnectionStatus();
   renderDashboard();
   renderCollection();
-  $('patient-list').innerHTML = state.patients.map(p => `<article class="patient-card"><div class="row"><strong>${esc(p.name)}</strong><span>${esc(money(p.rate))} לפגישה</span></div><div class="small muted">${esc(p.phone)} · ${esc(p.status)}</div><button class="secondary" data-patient="${esc(p.id)}">פגישות וגבייה ←</button></article>`).join('') || '<div class="empty">טרם נוספו מטופלים.</div>';
-  $('all-appointments').innerHTML = [...state.appointments].sort((a,b) => b.date.localeCompare(a.date)).map(a => card(a)).join('') || `<div class="empty">${state.connected ? 'השרת החזיר 0 פגישות. יש לבדוק שבגיליון Appointments המחובר יש שורות מתחת לכותרות.' : 'לא נטענו פגישות. יש להתחבר לגיליון כדי לראות אותן.'}</div>`;
+  $('patient-list').innerHTML = state.patients.map(p => `<article class="patient-card"><div class="row"><strong>${esc(p.name)}</strong><span>${esc(money(p.rate))} לפגישה</span></div><div class="small muted">${esc(p.phone)} · ${esc(p.status)}</div></article>`).join('') || '<div class="empty">טרם נוספו מטופלים.</div>';
+  renderAppointments();
   const docs = new Map();
   state.appointments.filter(a => a.docNumber).forEach(a => { const key = `${a.clientName}|${a.docNumber}`; if (!docs.has(key)) docs.set(key,{...a,amount:0,count:0}); const d=docs.get(key); d.amount += a.amount; d.count++; });
   $('document-list').innerHTML = [...docs.values()].map(d => `<article class="document-card"><div class="row"><strong>${esc(d.clientName)}</strong><span>${esc(money(d.amount))}</span></div><div class="small muted">מסמך ${esc(d.docNumber)} · ${d.count} פגישות</div>${safeLink(d.pdfUrl) ? `<a target="_blank" rel="noopener noreferrer" href="${esc(safeLink(d.pdfUrl))}">צפייה במסמך ↗</a>` : '<div class="small muted">קישור למסמך לא נשמר בגיליון</div>'}</article>`).join('') || '<div class="empty">טרם נשמרו מסמכים בגיליון.</div>';
@@ -127,9 +125,19 @@ function renderDashboard() {
   $('stat-appointments').textContent = state.appointments.length;
   $('stat-paid').textContent = money(total(state.appointments.filter(a=>a.isPaid)));
   $('stat-debt').textContent = money(total(state.appointments.filter(a=>!a.isPaid)));
-  const debtors=state.patients.map(p=>({patient:p,apps:state.appointments.filter(a=>a.patientId===p.id&&!a.isPaid)})).filter(d=>d.apps.length);
-  $('dashboard-debtors').innerHTML=debtors.map(d=>`<button class="debtor-row" data-patient="${esc(d.patient.id)}"><span>${esc(d.patient.name)}<small>${d.apps.length} פגישות ממתינות לתשלום</small></span><strong>${esc(money(total(d.apps)))}</strong><span aria-hidden="true">←</span></button>`).join('') || `<p class="small">${state.connected||demo ? (state.appointments.length ? 'אין פגישות שממתינות לתשלום.' : 'לא התקבלו פגישות מהגיליון. לאחר בירור הטעינה, יתרות המטופלים יופיעו כאן.') : 'יתרות המטופלים יופיעו לאחר החיבור.'}</p>`;
-  $('data-status').textContent=demo?'מצב הדגמה · הנתונים בדויים':state.loaded?`${state.patients.length} מטופלים · ${state.appointments.length} פגישות${state.refreshFailed?' · מוצגים הנתונים האחרונים':''}`:'נתוני הקליניקה טרם נטענו. אפשר להתחבר דרך ההגדרות.';
+}
+
+function renderAppointments(){
+  const patients=$('appointments-patient'),months=$('appointments-month');
+  if(!state.patients.some(p=>p.id===state.appointmentsPatient))state.appointmentsPatient='ALL';
+  patients.innerHTML='<option value="ALL">כל המטופלים</option>'+state.patients.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+  patients.value=state.appointmentsPatient;
+  const availableMonths=[...new Set(state.appointments.filter(a=>validDate(a.date)).map(a=>a.date.slice(0,7)))].sort().reverse();
+  if(!availableMonths.includes(state.appointmentsMonth))state.appointmentsMonth='ALL';
+  months.innerHTML='<option value="ALL">כל החודשים</option>'+availableMonths.map(m=>`<option value="${m}">${esc(new Intl.DateTimeFormat('he-IL',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(m+'-01')))}</option>`).join('');
+  months.value=state.appointmentsMonth;
+  const list=state.appointments.filter(a=>(state.appointmentsPatient==='ALL'||a.patientId===state.appointmentsPatient)&&(state.appointmentsMonth==='ALL'||a.date.slice(0,7)===state.appointmentsMonth)).sort((a,b)=>b.date.localeCompare(a.date));
+  $('all-appointments').innerHTML=list.map(a=>card(a)).join('')||'<div class="empty">אין פגישות להצגה.</div>';
 }
 
 function openDialog(name) {
@@ -181,6 +189,8 @@ document.addEventListener('click', event => {
 });
 document.querySelectorAll('dialog').forEach(d => d.addEventListener('cancel',e => {if(state.busy)e.preventDefault();}));
 $('patient-filter').addEventListener('change', e => {state.patientId=e.target.value;resetSelection();renderCollection();});
+$('appointments-patient').addEventListener('change',e=>{state.appointmentsPatient=e.target.value;renderAppointments();});
+$('appointments-month').addEventListener('change',e=>{state.appointmentsMonth=e.target.value;renderAppointments();});
 $('month').addEventListener('change',e=>{if(/^\d{4}-\d{2}$/.test(e.target.value)){state.month=e.target.value;resetSelection();renderCollection();}});
 $('appointment-groups').addEventListener('change',e=>{const id=e.target.dataset.appointment;if(id){e.target.checked?state.selected.add(id):state.selected.delete(id);updateSelection();}});
 $('appointment-form').elements.patientId.addEventListener('change',fillRate);
@@ -238,5 +248,5 @@ if(demo){
   state.patients=[{id:'PAT-DEMO-1',name:'נועה לוי',phone:'050-0000000',rate:350,status:'פעיל'},{id:'PAT-DEMO-2',name:'אורי גפן',phone:'052-0000000',rate:400,status:'פעיל'}];
   state.patientId=state.patients[0].id;state.appointments=[['01',before+'-03',350],['02',before+'-10',350],['03',before+'-24',350],['04',m+'-01',350],['05',m+'-08',350]].map(([id,date,amount])=>({id:'APP-DEMO-'+id,patientId:state.patientId,clientName:'נועה לוי',date,amount,isPaid:false,docNumber:'',pdfUrl:''}));
   state.appointments.push({id:'APP-DEMO-06',patientId:'PAT-DEMO-2',clientName:'אורי גפן',date:before+'-15',amount:400,isPaid:false,docNumber:'',pdfUrl:''});
-  resetSelection();render();notice('נתוני דוגמה בלבד · אין חיבור לנתוני מטופלים או להפקת מסמכים.');
+  resetSelection();render();
 }else{render();if(apiUrl()&&sessionStorage.getItem('THERAPAY_ACCESS_TOKEN'))load().catch(()=>{});}
