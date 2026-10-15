@@ -3,7 +3,7 @@ import { today, money, validDate, defaultSelection, selectedAppointments, total,
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const demo = new URLSearchParams(location.search).get('demo') === '1';
-const state = { patients:[], appointments:[], patientId:'', month:today().slice(0,7), appointmentsPatient:'ALL', appointmentsMonth:'ALL', selected:new Set(), view:'dashboard', connected:false, loaded:false, loading:false, refreshFailed:false, environment:'sandbox', morningConfigured:false, emailDelivery:false, recipient:null, busy:false };
+const state = { patients:[], appointments:[], patientId:'', month:today().slice(0,7), appointmentsPatient:'ALL', appointmentsMonth:'ALL', documentsPatient:'ALL', documentsMonth:'ALL', selected:new Set(), view:'dashboard', connected:false, loaded:false, loading:false, refreshFailed:false, environment:'sandbox', morningConfigured:false, emailDelivery:false, recipient:null, busy:false };
 let recipientLookup=0;
 let attempt = readAttempt();
 function readAttempt() { try { return JSON.parse(sessionStorage.getItem('THERAPAY_ATTEMPT') || 'null'); } catch { return null; } }
@@ -130,9 +130,7 @@ function render() {
   renderCollection();
   $('patient-list').innerHTML = state.patients.map(p => `<article class="patient-card"><div class="row"><strong>${esc(p.name)}</strong><span>${esc(money(p.rate))} לפגישה</span></div><div class="small muted">${esc(p.phone)} · ${esc(p.status)}</div></article>`).join('') || '<div class="empty">טרם נוספו מטופלים.</div>';
   renderAppointments();
-  const docs = new Map();
-  state.appointments.filter(a => a.docNumber).forEach(a => { const key = `${a.clientName}|${a.docNumber}`; if (!docs.has(key)) docs.set(key,{...a,amount:0,count:0}); const d=docs.get(key); d.amount += a.amount; d.count++; });
-  $('document-list').innerHTML = [...docs.values()].map(d => `<article class="document-card"><div class="row"><strong>${esc(d.clientName)}</strong><span>${esc(money(d.amount))}</span></div><div class="small muted">מסמך ${esc(d.docNumber)} · ${d.count} פגישות</div>${safeLink(d.pdfUrl) ? `<a target="_blank" rel="noopener noreferrer" href="${esc(safeLink(d.pdfUrl))}">צפייה במסמך ↗</a>` : '<div class="small muted">קישור למסמך לא נשמר בגיליון</div>'}</article>`).join('') || '<div class="empty">טרם נשמרו מסמכים בגיליון.</div>';
+  renderDocuments();
   view(state.view);
 }
 
@@ -155,6 +153,27 @@ function renderAppointments(){
   months.value=state.appointmentsMonth;
   const list=state.appointments.filter(a=>(state.appointmentsPatient==='ALL'||a.patientId===state.appointmentsPatient)&&(state.appointmentsMonth==='ALL'||a.date.slice(0,7)===state.appointmentsMonth)).sort((a,b)=>b.date.localeCompare(a.date));
   $('all-appointments').innerHTML=list.length?appointmentTable('<tbody>'+list.map(a=>appointmentRow(a)).join('')+'</tbody>'):'<div class="empty">אין פגישות להצגה.</div>';
+}
+
+function renderDocuments(){
+  const patients=$('documents-patient'),months=$('documents-month');
+  if(!state.patients.some(p=>p.id===state.documentsPatient))state.documentsPatient='ALL';
+  patients.innerHTML='<option value="ALL">כל המטופלים</option>'+state.patients.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+  patients.value=state.documentsPatient;
+  const docs=new Map();
+  state.appointments.filter(a=>a.docNumber).forEach(a=>{
+    const key=JSON.stringify([a.patientId||a.clientName,String(a.docNumber)]);
+    if(!docs.has(key))docs.set(key,{...a,amount:0,count:0,months:new Set()});
+    const d=docs.get(key);d.amount+=Number(a.amount);d.count++;
+    if(validDate(a.date))d.months.add(a.date.slice(0,7));
+    if(!safeLink(d.pdfUrl)&&safeLink(a.pdfUrl))d.pdfUrl=a.pdfUrl;
+  });
+  const available=[...new Set([...docs.values()].flatMap(d=>[...d.months]))].sort().reverse();
+  if(!available.includes(state.documentsMonth))state.documentsMonth='ALL';
+  months.innerHTML='<option value="ALL">כל החודשים</option>'+available.map(m=>`<option value="${m}">${esc(new Intl.DateTimeFormat('he-IL',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(m+'-01')))}</option>`).join('');
+  months.value=state.documentsMonth;
+  const list=[...docs.values()].filter(d=>(state.documentsPatient==='ALL'||d.patientId===state.documentsPatient)&&(state.documentsMonth==='ALL'||d.months.has(state.documentsMonth)));
+  $('document-list').innerHTML=list.length?`<div class="session-table-wrap"><table class="session-table documents-table"><caption class="sr-only">מסמכים שהופקו · הסכום המלא בכל מסמך</caption><thead><tr><th scope="col">מסמך</th><th scope="col">מטופל</th><th scope="col">סכום</th><th scope="col">צפייה</th></tr></thead><tbody>${list.map(d=>`<tr><td>${esc(d.docNumber)}</td><td>${esc(d.clientName)}</td><td class="amount-cell">${esc(money(d.amount))}</td><td>${safeLink(d.pdfUrl)?`<a class="document-link" target="_blank" rel="noopener noreferrer" aria-label="פתיחת מסמך ${esc(d.docNumber)}" href="${esc(safeLink(d.pdfUrl))}">פתיחה ↗</a>`:'—'}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">אין מסמכים להצגה.</div>';
 }
 
 function openDialog(name) {
@@ -195,7 +214,7 @@ async function showPayment() {
   $('pay-form').elements.paymentDate.max = today();
   $('pay-summary').textContent = `${patient().name} · ${chosen().length} פגישות · ${money(total(chosen()))}`;
   $('pay-environment').textContent = demo ? 'הדגמה בלבד · לא יופק מסמך.' : state.environment === 'sandbox' ? 'סביבת בדיקות Morning · המסמך שיופק הוא מסמך בדיקה.' : 'Morning · הפקת מסמך בחשבון הפעיל.';
-  $('pay-result').textContent=''; $('issue').disabled=false;
+  $('pay-result').textContent=''; $('pay-progress').hidden=true; $('issue').disabled=false;
   state.recipient=null;
   $('pay-email').textContent='בודק את כתובת המייל הרשומה ב־Morning…';
   $('issue').disabled=true;
@@ -217,6 +236,8 @@ document.addEventListener('click', event => {
 document.querySelectorAll('dialog').forEach(d => d.addEventListener('cancel',e => {if(state.busy)e.preventDefault();}));
 $('patient-filter').addEventListener('change', e => {state.patientId=e.target.value;resetSelection();renderCollection();});
 $('appointments-patient').addEventListener('change',e=>{state.appointmentsPatient=e.target.value;renderAppointments();});
+$('documents-patient').addEventListener('change',e=>{state.documentsPatient=e.target.value;renderDocuments();});
+$('documents-month').addEventListener('change',e=>{state.documentsMonth=e.target.value;renderDocuments();});
 $('appointments-month').addEventListener('change',e=>{state.appointmentsMonth=e.target.value;renderAppointments();});
 $('month').addEventListener('change',e=>{if(/^\d{4}-\d{2}$/.test(e.target.value)){state.month=e.target.value;resetSelection();renderCollection();}});
 $('appointment-groups').addEventListener('change',e=>{const id=e.target.dataset.appointment;if(id){e.target.checked?state.selected.add(id):state.selected.delete(id);updateSelection();}});
@@ -229,7 +250,7 @@ $('settings-form').addEventListener('submit',async e=>{
   e.preventDefault(); const f=e.target; let u;
   try{u=new URL(f.elements.url.value.trim());if(u.protocol!=='https:'||u.hostname!=='script.google.com'||!/^\/macros\/s\/[\w-]+\/exec$/.test(u.pathname)||u.search)throw new Error();}catch{notice('יש להזין כתובת Web App שמסתיימת ב־/exec, מתוך Apps Script.',true);return;}
   localStorage.setItem('APPS_SCRIPT_URL',u.href);localStorage.setItem('THERAPAY_SIGNATURE',f.elements.signature.value.trim());rememberAccess(f.elements.accessToken.value.trim(),f.elements.rememberAccess.checked);
-  const b=f.querySelector('[type=submit]');b.disabled=true;try{await load();$('settings-result').textContent='החיבור הושלם והנתונים נטענו.';}catch(error){$('settings-result').textContent=error.message;}finally{b.disabled=false;}
+  const b=f.querySelector('[type=submit]');b.disabled=true;try{await load();view('dashboard');}catch(error){$('settings-result').textContent=error.message;}finally{b.disabled=false;}
 });
 $('refresh').addEventListener('click',async()=>{try{await load();$('settings-result').textContent='הנתונים עודכנו.';}catch(error){$('settings-result').textContent=error.message;}});
 $('disconnect').addEventListener('click',()=>{if(state.loading)return;forgetAccess();state.patients=[];state.appointments=[];state.patientId='';state.selected.clear();state.connected=false;state.loaded=false;state.refreshFailed=false;render();$('settings-result').textContent='התנתקת מהקליניקה.';});
@@ -252,12 +273,11 @@ $('pay-form').addEventListener('submit',async e=>{
   const fingerprint=JSON.stringify(payload);
   if(attempt && attempt.fingerprint!==fingerprint){$('pay-result').textContent='קיימת בקשת הפקה קודמת שטרם אושרה. חזרו לאותה בחירה ולאותו תאריך ואמצעי תשלום, או בדקו את Morning ואת יומן הבקשות לפני איפוס ידני.';return;}
   if(!attempt){attempt={fingerprint,requestId:uuid()};sessionStorage.setItem('THERAPAY_ATTEMPT',JSON.stringify(attempt));}
-  state.busy=true;$('issue').disabled=true;$('issue').textContent='מפיק מסמך…';updateSelection();
+  state.busy=true;$('issue').disabled=true;$('issue').textContent='מפיק ושולח…';$('pay-progress').hidden=false;$('pay-form').setAttribute('aria-busy','true');updateSelection();
   try{
     const result=await api('createMorningDoc',{...payload,requestId:attempt.requestId});
     attempt=null;sessionStorage.removeItem('THERAPAY_ATTEMPT');
-    $('pay-result').replaceChildren(document.createTextNode('המסמך '+result.docNumber+' הופק והפגישות עודכנו.'));
-    if(result.emailRequested)$('pay-result').append(document.createTextNode(' המסמך נמסר ל־Morning עם בקשת שליחה אל '+result.recipientEmails.join(', ')+'.'));
+    $('pay-result').replaceChildren(document.createTextNode(result.emailRequested?'המסמך הופק ונשלח.':'המסמך הופק.'));
     const url=safeLink(result.pdfUrl);if(url){const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=' צפייה במסמך ↗';$('pay-result').append(a);}
     state.appointments=applyIssuedDocument(state.appointments,payload.patientId,payload.ids,result);
     state.connected=true;
@@ -270,13 +290,13 @@ $('pay-form').addEventListener('submit',async e=>{
     $('pay-result').textContent=error.message;
     if(error.code==='VALIDATION'||error.code==='MORNING_REJECTED'){attempt=null;sessionStorage.removeItem('THERAPAY_ATTEMPT');}
     $('issue').disabled=false;
-  }finally{state.busy=false;$('issue').textContent='הפקת חשבונית מס־קבלה';updateSelection();}
+  }finally{state.busy=false;$('pay-progress').hidden=true;$('pay-form').removeAttribute('aria-busy');$('issue').textContent='הפקת חשבונית מס־קבלה';updateSelection();}
 });
 
 if(demo){
   const m=state.month;const prev=new Date(Number(m.slice(0,4)),Number(m.slice(5))-2,15);const before=`${prev.getFullYear()}-${String(prev.getMonth()+1).padStart(2,'0')}`;
   state.patients=[{id:'PAT-DEMO-1',name:'נועה לוי',phone:'050-0000000',rate:350,status:'פעיל'},{id:'PAT-DEMO-2',name:'אורי גפן',phone:'052-0000000',rate:400,status:'פעיל'}];
   state.patientId=state.patients[0].id;state.appointments=[['01',before+'-03',350],['02',before+'-10',350],['03',before+'-24',350],['04',m+'-01',350],['05',m+'-08',350]].map(([id,date,amount])=>({id:'APP-DEMO-'+id,patientId:state.patientId,clientName:'נועה לוי',date,amount,isPaid:false,docNumber:'',pdfUrl:''}));
-  state.appointments.push({id:'APP-DEMO-06',patientId:'PAT-DEMO-2',clientName:'אורי גפן',date:before+'-15',amount:400,isPaid:false,docNumber:'',pdfUrl:''});
+  state.appointments.push({id:'APP-DEMO-06',patientId:'PAT-DEMO-2',clientName:'אורי גפן',date:before+'-15',amount:400,isPaid:true,docNumber:'DEMO-1001',pdfUrl:''});
   resetSelection();render();
 }else{render();if(apiUrl()&&accessToken())load().catch(()=>{});}

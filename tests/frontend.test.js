@@ -20,7 +20,7 @@ function fixture(){
   const sessionStorage=storage();const localStorage=storage();const queue=[];const calls=[];
   const context={...domain,console,URL,URLSearchParams,AbortController,Intl,Date,crypto,setTimeout,clearTimeout,sessionStorage,localStorage,location:{search:''},window:{scrollTo(){}},
     document:{getElementById:id=>{if(!elements[id])throw Error('Missing element '+id);return elements[id];},addEventListener(){},querySelectorAll:selector=>selector==='dialog'?['patient','appointment','message','pay','appointment-details'].map(id=>elements[id]):selector==='.view'?['dashboard','patients','appointments','collection','documents','settings'].map(id=>Object.assign(elements[id],{id})):[],createTextNode:text=>({textContent:text}),createElement:()=>new Element()},
-    fetch:async(url,options)=>{calls.push(JSON.parse(options.body));const result=queue.shift();if(result instanceof Error)throw result;if(!result)throw Error('Unexpected request');return {ok:true,json:async()=>result};}
+    fetch:async(url,options)=>{calls.push(JSON.parse(options.body));const result=await queue.shift();if(result instanceof Error)throw result;if(!result)throw Error('Unexpected request');return {ok:true,json:async()=>result};}
   };
   vm.createContext(context);vm.runInContext(source,context);sessionStorage.setItem('THERAPAY_ACCESS_TOKEN','fixture-access');
   const data={success:true,apiVersion:2,environment:'sandbox',morningConfigured:true,supportsEmailDelivery:true,patients:[{id:'p1',name:'בדיקה',phone:'0541234567',rate:350,status:'פעיל'}],appointments:[{id:'a1',patientId:'p1',clientName:'בדיקה',date:'2020-01-01',amount:350,isPaid:false},{id:'a2',patientId:'p1',clientName:'בדיקה',date:'2020-01-02',amount:350,isPaid:false}]};
@@ -76,3 +76,35 @@ test('remembered access survives closing the tab session and explicit logout rem
 test('remember opt-out uses only tab storage and authentication rejection clears both stores',async()=>{const f=fixture();f.localStorage.setItem('THERAPAY_REMEMBER','false');await f.connect();assert.equal(f.localStorage.getItem('THERAPAY_ACCESS_TOKEN'),null);assert.equal(f.run('accessToken()'),'fixture-access');f.run('rememberAccess("remembered-access",true)');f.queue.push({success:false,apiVersion:2,code:'AUTH',message:'קוד שגוי'});await assert.rejects(f.run('load()'));assert.equal(f.run('accessToken()'),'');});
 test('opening payment reads the registered recipient before enabling issuance',async()=>{const f=fixture();await f.connect();f.queue.push({success:true,apiVersion:2,recipient:{id:'MORNING-1',emails:['invoice@example.com']}});await f.run('showPayment()');assert.equal(f.run('state.recipient.id'),'MORNING-1');assert.match(f.elements['pay-email'].textContent,/invoice@example.com/);assert.equal(f.elements.issue.disabled,false);assert.equal(f.calls.filter(c=>c.action==='createMorningDoc').length,0);});
 test('old backend without mail capability cannot silently issue an unsent invoice',async()=>{const f=fixture();f.data.supportsEmailDelivery=false;await f.connect();await f.run('showPayment()');assert.equal(f.elements.issue.disabled,true);assert.match(f.elements['pay-email'].textContent,/עדכון בקנד/);assert.equal(f.calls.filter(c=>c.action==='createMorningDoc').length,0);});
+
+test('successful connection leaves settings, while failed connection stays there',async()=>{
+  const f=fixture();const form=f.elements['settings-form'];
+  form.elements.url.value='https://script.google.com/macros/s/test/exec';form.elements.accessToken.value='fixture-access';
+  f.run("view('settings')");f.queue.push(structuredClone(f.data));
+  await form.listeners.submit({preventDefault(){},target:form});
+  assert.equal(f.run('state.view'),'dashboard');assert.equal(f.elements.settings.hidden,true);
+  f.run("view('settings')");f.queue.push(new TypeError('offline'));
+  await form.listeners.submit({preventDefault(){},target:form});assert.equal(f.run('state.view'),'settings');
+});
+
+test('documents filter whole documents by patient and session month without reducing totals',async()=>{
+  const f=fixture();f.data.appointments[0].docNumber='101';f.data.appointments[1].docNumber='101';f.data.appointments[1].date='2020-02-02';
+  f.data.patients.push({id:'p2',name:'אחר',rate:400});
+  f.data.appointments.push({id:'a3',patientId:'p2',clientName:'אחר',date:'2020-01-03',amount:400,docNumber:'102'});
+  await f.connect();assert.match(f.elements['document-list'].innerHTML,/<table/);
+  f.elements['documents-patient'].listeners.change({target:{value:'p1'}});
+  f.elements['documents-month'].listeners.change({target:{value:'2020-02'}});
+  assert.match(f.elements['document-list'].innerHTML,/700/);assert.ok(!f.elements['document-list'].innerHTML.includes('102'));
+  f.queue.push(structuredClone(f.data));await f.run('load()');assert.equal(f.elements['documents-month'].value,'2020-02');
+  f.elements['documents-patient'].listeners.change({target:{value:'p2'}});assert.match(f.elements['document-list'].innerHTML,/אין מסמכים/);
+});
+
+test('invoice shows progress until finished and a short sent confirmation after success',async()=>{
+  const f=fixture();await f.connect();f.run('state.selected=new Set(["a1"]);state.recipient={id:"M1",emails:["test@example.com"]}');
+  f.elements['pay-form'].elements.paymentMethod.value='bit';f.elements['pay-form'].elements.paymentDate.value=domain.today();
+  let finish;f.queue.push(new Promise(resolve=>{finish=resolve;}),structuredClone(f.data));
+  const pending=f.elements['pay-form'].listeners.submit({preventDefault(){},target:f.elements['pay-form']});
+  assert.equal(f.elements['pay-progress'].hidden,false);assert.equal(f.elements.issue.disabled,true);
+  finish({success:true,apiVersion:2,docNumber:'101',emailRequested:true,recipientEmails:['test@example.com']});await pending;
+  assert.equal(f.elements['pay-progress'].hidden,true);assert.equal(f.elements['pay-result'].textContent,'המסמך הופק ונשלח.');
+});
