@@ -73,9 +73,19 @@ function view(name) {
   $('collection-dock').hidden = name !== 'collection' || !(state.connected || demo);
   window.scrollTo({top:0});
 }
-function card(a, selectable = false) {
-  const body = `<div class="appointment-detail"><div class="appointment-date">${esc(displayDate(a.date))}</div><div class="small muted">${selectable ? (a.isPaid ? 'שולם' : 'ממתין לתשלום') : esc(a.clientName)}</div>${a.isPaid ? '<span class="badge">שולם'+(a.docNumber ? ' · '+esc(a.docNumber) : '')+'</span>' : ''}</div><strong>${esc(money(a.amount))}</strong>`;
-  return selectable ? `<label class="appointment-card"><input type="checkbox" data-appointment="${esc(a.id)}" aria-label="בחירת פגישה ${esc(displayDate(a.date))}" ${state.selected.has(a.id) ? 'checked' : ''} ${a.isPaid || !validDate(a.date) ? 'disabled' : ''}>${body}</label>` : `<div class="appointment-card">${body}</div>`;
+function appointmentRow(a,selectable=false){
+  const date=validDate(a.date)?a.date.slice(2).split('-').reverse().join('.'):'חסר תאריך';
+  const selection=selectable?`<td class="pick-cell"><label class="cell-pick"><input type="checkbox" data-appointment="${esc(a.id)}" aria-label="בחירת פגישה ${esc(displayDate(a.date))}" ${state.selected.has(a.id)?'checked':''} ${a.isPaid||!validDate(a.date)?'disabled':''}></label></td>`:'';
+  return `<tr data-record-row data-detail="${esc(a.id)}">${selection}<td class="date-cell"><button class="row-open" data-detail="${esc(a.id)}" aria-label="פרטי פגישה ${esc(displayDate(a.date))}"><span dir="ltr">${esc(date)}</span></button></td>${selectable?'':`<td class="name-cell">${esc(a.clientName)}</td>`}<td class="amount-cell">${esc(money(a.amount))}</td><td><span class="status-pill ${a.isPaid?'paid':'pending'}">${a.isPaid?'שולם':'ממתין'}</span></td></tr>`;
+}
+function appointmentTable(rows,selectable=false,caption='פגישות'){
+  return `<div class="session-table-wrap"><table class="session-table ${selectable?'collection-table':'appointments-table'}"><caption class="sr-only">${esc(caption)}</caption><thead><tr>${selectable?'<th scope="col" class="pick-cell"><span class="sr-only">בחירה</span></th>':''}<th scope="col">תאריך</th>${selectable?'':'<th scope="col">מטופל</th>'}<th scope="col">סכום</th><th scope="col">סטטוס</th></tr></thead>${rows}</table></div>`;
+}
+function showAppointmentDetails(id){
+  const a=state.appointments.find(a=>a.id===id);if(!a)return;
+  const link=safeLink(a.pdfUrl);
+  $('appointment-detail-content').innerHTML=`<dl class="session-details"><dt>מטופל</dt><dd>${esc(a.clientName)}</dd><dt>תאריך</dt><dd>${esc(displayDate(a.date))}</dd><dt>סכום</dt><dd>${esc(money(a.amount))}</dd><dt>סטטוס</dt><dd>${a.isPaid?'שולם':'ממתין לתשלום'}</dd><dt>אמצעי תשלום</dt><dd>${esc(a.paymentMethod||'—')}</dd><dt>מספר חשבונית</dt><dd>${esc(a.docNumber||'—')}</dd></dl>${link?`<a class="button secondary" href="${esc(link)}" target="_blank" rel="noopener noreferrer">צפייה במסמך ↗</a>`:''}`;
+  $('appointment-details').showModal();
 }
 function renderCollection() {
   $('month').value = state.month;
@@ -93,7 +103,8 @@ function renderCollection() {
     ['פגישות ששולמו', apps.filter(a => a.isPaid && a.date.slice(0,7) <= state.month)],
     ['נדרש תיקון תאריך בגיליון', apps.filter(a => !a.isPaid && !validDate(a.date))]
   ];
-  $('appointment-groups').innerHTML = groups.filter(([,list]) => list.length).map(([title,list]) => `<h3>${title}</h3>${list.map(a => card(a,true)).join('')}`).join('') || '<div class="empty">עדיין אין פגישות למטופל הזה.</div>';
+  const rows=groups.filter(([,list])=>list.length).map(([title,list])=>`<tbody><tr class="table-group"><th colspan="4" scope="rowgroup">${esc(title)}</th></tr>${list.map(a=>appointmentRow(a,true)).join('')}</tbody>`).join('');
+  $('appointment-groups').innerHTML=rows?appointmentTable(rows,true,'פגישות לתשלום עבור '+p.name):'<div class="empty">עדיין אין פגישות למטופל הזה.</div>';
   updateSelection();
 }
 function updateSelection() {
@@ -137,7 +148,7 @@ function renderAppointments(){
   months.innerHTML='<option value="ALL">כל החודשים</option>'+availableMonths.map(m=>`<option value="${m}">${esc(new Intl.DateTimeFormat('he-IL',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(m+'-01')))}</option>`).join('');
   months.value=state.appointmentsMonth;
   const list=state.appointments.filter(a=>(state.appointmentsPatient==='ALL'||a.patientId===state.appointmentsPatient)&&(state.appointmentsMonth==='ALL'||a.date.slice(0,7)===state.appointmentsMonth)).sort((a,b)=>b.date.localeCompare(a.date));
-  $('all-appointments').innerHTML=list.map(a=>card(a)).join('')||'<div class="empty">אין פגישות להצגה.</div>';
+  $('all-appointments').innerHTML=list.length?appointmentTable('<tbody>'+list.map(a=>appointmentRow(a)).join('')+'</tbody>'):'<div class="empty">אין פגישות להצגה.</div>';
 }
 
 function openDialog(name) {
@@ -186,6 +197,7 @@ document.addEventListener('click', event => {
   const close=event.target.closest('[data-close]'); if(close && !state.busy) close.closest('dialog').close();
   const tab=event.target.closest('[data-view]'); if(tab && !state.busy) view(tab.dataset.view);
   const person=event.target.closest('[data-patient]'); if(person) {state.patientId=person.dataset.patient;resetSelection();renderCollection();view('collection');}
+  const detail=event.target.closest('[data-detail]');if(detail&&!event.target.closest('.cell-pick')&&!state.busy)showAppointmentDetails(detail.dataset.detail);
 });
 document.querySelectorAll('dialog').forEach(d => d.addEventListener('cancel',e => {if(state.busy)e.preventDefault();}));
 $('patient-filter').addEventListener('change', e => {state.patientId=e.target.value;resetSelection();renderCollection();});

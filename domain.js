@@ -2,7 +2,7 @@ export function today(date = new Date()) {
   const p = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
   return ['year','month','day'].map(t => p.find(x => x.type === t).value).join('-');
 }
-export const money = value => new Intl.NumberFormat('he-IL', { style:'currency', currency:'ILS', maximumFractionDigits:2 }).format(value);
+export const money = value => new Intl.NumberFormat('he-IL', { style:'currency', currency:'ILS', minimumFractionDigits:0, maximumFractionDigits:2 }).format(value);
 export function validDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return false;
   const d = new Date(value + 'T12:00:00Z');

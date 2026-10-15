@@ -19,7 +19,7 @@ function fixture(){
   const storage=()=>{const map=new Map();return {getItem:k=>map.get(k)||null,setItem:(k,v)=>map.set(k,v),removeItem:k=>map.delete(k)};};
   const sessionStorage=storage();const localStorage=storage();const queue=[];const calls=[];
   const context={...domain,console,URL,URLSearchParams,AbortController,Intl,Date,crypto,setTimeout,clearTimeout,sessionStorage,localStorage,location:{search:''},window:{scrollTo(){}},
-    document:{getElementById:id=>{if(!elements[id])throw Error('Missing element '+id);return elements[id];},addEventListener(){},querySelectorAll:selector=>selector==='dialog'?['patient','appointment','message','pay'].map(id=>elements[id]):selector==='.view'?['dashboard','patients','appointments','collection','documents','settings'].map(id=>Object.assign(elements[id],{id})):[],createTextNode:text=>({textContent:text}),createElement:()=>new Element()},
+    document:{getElementById:id=>{if(!elements[id])throw Error('Missing element '+id);return elements[id];},addEventListener(){},querySelectorAll:selector=>selector==='dialog'?['patient','appointment','message','pay','appointment-details'].map(id=>elements[id]):selector==='.view'?['dashboard','patients','appointments','collection','documents','settings'].map(id=>Object.assign(elements[id],{id})):[],createTextNode:text=>({textContent:text}),createElement:()=>new Element()},
     fetch:async(url,options)=>{calls.push(JSON.parse(options.body));const result=queue.shift();if(result instanceof Error)throw result;if(!result)throw Error('Unexpected request');return {ok:true,json:async()=>result};}
   };
   vm.createContext(context);vm.runInContext(source,context);sessionStorage.setItem('THERAPAY_ACCESS_TOKEN','fixture-access');
@@ -63,12 +63,12 @@ test('appointment filters combine patient and named month/year and survive refre
   await f.connect();assert.match(f.elements['appointments-month'].innerHTML,/ינואר 2020/);assert.match(f.elements['appointments-month'].innerHTML,/ינואר 2021/);
   f.elements['appointments-patient'].listeners.change({target:{value:'p1'}});
   f.elements['appointments-month'].listeners.change({target:{value:'2020-01'}});
-  assert.equal((f.elements['all-appointments'].innerHTML.match(/class="appointment-card"/g)||[]).length,2);
+  assert.equal((f.elements['all-appointments'].innerHTML.match(/data-record-row/g)||[]).length,2);
   assert.ok(!f.elements['all-appointments'].innerHTML.includes('מטופל נוסף'));
   f.queue.push(structuredClone(f.data));await f.run('load()');
   assert.equal(f.elements['appointments-patient'].value,'p1');assert.equal(f.elements['appointments-month'].value,'2020-01');
   f.elements['appointments-patient'].listeners.change({target:{value:'p2'}});
-  assert.equal((f.elements['all-appointments'].innerHTML.match(/class="appointment-card"/g)||[]).length,1);
+  assert.equal((f.elements['all-appointments'].innerHTML.match(/data-record-row/g)||[]).length,1);
   f.elements['appointments-month'].listeners.change({target:{value:'2021-01'}});
   assert.match(f.elements['all-appointments'].innerHTML,/אין פגישות להצגה/);
 });
