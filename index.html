@@ -522,14 +522,12 @@
         }
 
         function parseAppointmentRow(rawRow, idx) {
-            // התאמה מדויקת לפי הכותרות ב-Google Sheets
             var clientName = rawRow["שם המטופל"] || rawRow["שם"] || rawRow["מטופל"] || rawRow.clientName || "";
             var dateVal = rawRow["תאריך"] || rawRow["תאריך ושעה"] || rawRow.date || "";
             var amountVal = Number(rawRow["סכום לתשלום"] || rawRow["סכום"] || rawRow.amount) || 350;
             var statusVal = rawRow["סטטוס תשלום"] || rawRow["סטטוס"] || rawRow.status || "";
             var docNum = rawRow["מספר חשבונית"] || rawRow.docNumber || "";
 
-            // מנגנון גיבוי גמיש
             if (!clientName || !dateVal) {
                 var keys = Object.keys(rawRow).filter(function(k) { return k !== "id" && k !== "rowIndex"; });
                 var allVals = keys.map(function(k) { return String(rawRow[k] || "").trim(); }).filter(function(v) { return v !== ""; });
@@ -564,7 +562,7 @@
             var isPaid = String(statusVal).includes("שולם") || (docNum !== "" && docNum !== "-");
 
             return {
-                id: rawRow.id || (idx + 1),
+                id: rawRow["מזהה פגישה"] || rawRow.id || (idx + 1),
                 date: dateVal,
                 clientName: clientName,
                 clientPhone: getPatientPhoneByName(clientName),
@@ -642,7 +640,7 @@
             if (filterVal !== "all") list = list.filter(function(a) { return (a.clientName || "").trim().toLowerCase() === filterVal; });
 
             tbody.innerHTML = list.map(function(a) {
-                return '<tr><td>' + a.date + '</td><td><strong>' + a.clientName + '</strong></td><td>₪' + a.amount + '</td><td><span class="badge ' + (a.isPaid ? 'badge-success' : 'badge-warning') + '">' + a.status + '</span></td><td>' + a.paymentMethod + '</td><td><button class="btn-action" type="button" style="font-size:0.75rem; padding:4px 8px;" onclick="openBatchPayModal()">גבייה</button></td></tr>';
+                return '<tr><td>' + a.date + '</td><td><strong>' + a.clientName + '</strong></td><td>₪' + a.amount + '</td><td><span class="badge ' + (a.isPaid ? 'badge-success' : 'badge-warning') + '">' + a.status + '</span></td><td>' + a.paymentMethod + '</td><td><button class="btn-action" type="button" style="font-size:0.75rem; padding:4px 8px;" onclick="openSinglePayModal(\'' + a.id + '\')">גבייה</button></td></tr>';
             }).join('');
         }
 
@@ -712,6 +710,16 @@
             if (sumEl) sumEl.innerText = "נבחרו " + window.currentBatchSelection.count + " פגישות | סה\"כ לתשלום: ₪" + window.currentBatchSelection.totalAmount;
         }
 
+        function openSinglePayModal(appId) {
+            // בחירת פגישה בודדת והסרת הסימון משאר הפגישות
+            var chks = document.querySelectorAll(".pay-chk");
+            chks.forEach(function(c) {
+                c.checked = (String(c.getAttribute("data-id")) === String(appId));
+            });
+            updateBatchSummary();
+            openBatchPayModal();
+        }
+
         function openBatchPayModal() {
             if (!window.currentBatchSelection || window.currentBatchSelection.count === 0) {
                 showToast("⚠️ אנא בחר פגישות לגבייה מהטבלה", "error");
@@ -749,6 +757,7 @@
 
             var payload = {
                 action: "createMorningDoc",
+                ids: window.currentBatchSelection.ids,
                 clientName: window.currentBatchSelection.clientName,
                 clientPhone: window.currentBatchSelection.clientPhone,
                 amount: window.currentBatchSelection.totalAmount,
@@ -894,7 +903,7 @@
             if (elDocs) elDocs.innerText = window.appData.appointments.filter(function(a) { return a.docNumber; }).length;
 
             tbody.innerHTML = window.appData.appointments.map(function(a) {
-                return '<tr><td>' + a.date + '</td><td><strong>' + a.clientName + '</strong></td><td>₪' + a.amount + '</td><td>' + a.paymentMethod + '</td><td><span class="badge ' + (a.docNumber ? 'badge-success' : 'badge-warning') + '">' + (a.docNumber ? ('הונפקה #' + a.docNumber) : 'טרם הונפק') + '</span></td><td><button class="btn-morning" type="button" style="font-size:0.75rem; padding:4px 8px;" onclick="openBatchPayModal()">🧾 הנפק חשבונית</button></td></tr>';
+                return '<tr><td>' + a.date + '</td><td><strong>' + a.clientName + '</strong></td><td>₪' + a.amount + '</td><td>' + a.paymentMethod + '</td><td><span class="badge ' + (a.docNumber ? 'badge-success' : 'badge-warning') + '">' + (a.docNumber ? ('הונפקה #' + a.docNumber) : 'טרם הונפק') + '</span></td><td><button class="btn-morning" type="button" style="font-size:0.75rem; padding:4px 8px;" onclick="openSinglePayModal(\'' + a.id + '\')">🧾 הנפק חשבונית</button></td></tr>';
             }).join('');
         }
 
