@@ -670,25 +670,29 @@
             if (elPaid) elPaid.innerText = "₪" + totalPaid;
             if (elDebt) elDebt.innerText = "₪" + totalDebt;
 
+            var selectedIds = (window.currentBatchSelection && window.currentBatchSelection.ids) ? window.currentBatchSelection.ids : [];
+
             tbody.innerHTML = list.map(function(p) {
                 var docText = p.docNumber ? ('חשבונית #' + p.docNumber) : '-';
-                return '<tr><td style="text-align:center;"><input type="checkbox" class="pay-chk" ' + (!p.isPaid ? 'checked' : '') + ' data-id="' + p.id + '" onchange="updateBatchSummary()"></td><td>' + p.date + '</td><td><strong>' + p.clientName + '</strong></td><td>₪' + p.amount + '</td><td><span class="badge ' + (p.isPaid ? 'badge-success' : 'badge-warning') + '">' + p.status + '</span></td><td><strong>' + docText + '</strong></td></tr>';
+                var isChecked = selectedIds.includes(String(p.id)) ? 'checked' : '';
+                var isDisabled = p.isPaid ? 'disabled' : '';
+
+                return '<tr><td style="text-align:center;"><input type="checkbox" class="pay-chk" ' + isChecked + ' ' + isDisabled + ' data-id="' + p.id + '" onchange="updateBatchSummary()"></td><td>' + p.date + '</td><td><strong>' + p.clientName + '</strong></td><td>₪' + p.amount + '</td><td><span class="badge ' + (p.isPaid ? 'badge-success' : 'badge-warning') + '">' + p.status + '</span></td><td><strong>' + docText + '</strong></td></tr>';
             }).join('');
 
             updateBatchSummary();
         }
 
         function toggleAllPayCheckboxes(master) {
-            document.querySelectorAll(".pay-chk").forEach(function(c) { c.checked = master.checked; });
+            document.querySelectorAll(".pay-chk:not([disabled])").forEach(function(c) { c.checked = master.checked; });
             updateBatchSummary();
         }
 
         function updateBatchSummary() {
-            var allChks = document.querySelectorAll(".pay-chk");
+            var allChks = document.querySelectorAll(".pay-chk:not([disabled])");
             var checkedChks = document.querySelectorAll(".pay-chk:checked");
             var masterChk = document.getElementById("selectAllPayCheck");
 
-            // עדכון הריבוע העליון בראש הטבלה בזמן אמת
             if (masterChk) {
                 masterChk.checked = (allChks.length > 0 && allChks.length === checkedChks.length);
             }
@@ -719,12 +723,9 @@
         }
 
         function openSinglePayModal(appId) {
-            // ביטול בחירה מכל הפגישות, ובחירת הפגישה הבודדת שנלחצה בלבד
-            var chks = document.querySelectorAll(".pay-chk");
-            chks.forEach(function(c) {
-                c.checked = (String(c.getAttribute("data-id")) === String(appId));
-            });
-            updateBatchSummary();
+            window.currentBatchSelection.ids = [String(appId)];
+            switchTab('payments');
+            renderPatientPayments();
             openBatchPayModal();
         }
 
@@ -796,6 +797,7 @@
                                 a.docNumber = result.docNumber;
                             }
                         });
+                        window.currentBatchSelection = { ids: [], clientName: "", clientPhone: "", totalAmount: 0, count: 0, datesList: "" };
                         renderAll();
                         setTimeout(fetchDataFromSheets, 1500);
                     }
