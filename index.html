@@ -711,54 +711,38 @@
             }
         }
 
-        // מנגנון פענוח חכם וגמיש לשורות הגיליון
+        // מנגנון סריקה חכם לערכים בכל עמודה
         function parseAppointmentRow(rawRow, idx) {
-            let name = "";
+            let keys = Object.keys(rawRow).filter(k => k !== "id" && k !== "rowIndex");
+            let clientName = "";
             let dateVal = "";
             let amountVal = 350;
             let statusVal = "";
             let docNum = "";
 
-            for (let k in rawRow) {
-                if (k === "id" || k === "rowIndex") continue;
-                const val = String(rawRow[k] || "").trim();
-                if (!val) continue;
+            let allVals = keys.map(k => String(rawRow[k] || "").trim()).filter(v => v !== "");
 
-                const kLower = k.toLowerCase();
+            for (let val of allVals) {
+                if (val.startsWith("APP-")) continue;
 
-                if (kLower.includes("שם") || kLower.includes("מטופל") || kLower.includes("לקוח") || kLower.includes("client") || kLower.includes("name")) {
-                    if (!name) name = val;
+                if ((val.match(/^\d{4}-\d{2}-\d{2}$/) \vert{}\vert{} val.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}$/)) && !dateVal) {
+                    dateVal = val;
                 }
-                else if (kLower.includes("תאריך") || kLower.includes("date")) {
-                    if (!dateVal && (val.includes("-") || val.includes("/"))) dateVal = val;
+                else if (!isNaN(val) && Number(val) >= 50 && Number(val) <= 10000) {
+                    amountVal = Number(val);
                 }
-                else if (kLower.includes("סכום") || kLower.includes("מחיר") || kLower.includes("תעריף") || kLower.includes("amount") || kLower.includes("price")) {
-                    if (!isNaN(val) && Number(val) > 0) amountVal = Number(val);
+                else if (val.includes("ביט") || val.includes("פייבוקס") || val.includes("שולם") || val.includes("ממתין") || val.includes("העברה") || val.includes("אשראי")) {
+                    if (!statusVal) statusVal = val;
                 }
-                else if (kLower.includes("סטטוס") || kLower.includes("אמצעי") || kLower.includes("תשלום") || kLower.includes("מצב") || kLower.includes("status")) {
-                    statusVal = val;
+                else if (val.match(/^\d{4,8}\$/) && !docNum) {
+                    docNum = val;
                 }
-                else if (kLower.includes("קבלה") || kLower.includes("מסמך") || kLower.includes("חשבונית") || kLower.includes("doc")) {
-                    if (val !== "-") docNum = val;
+                else if (isNaN(val) && !val.includes("http") && !val.includes("חשבונית") && val.length >= 2) {
+                    if (!clientName) clientName = val;
                 }
             }
 
-            // זיהוי לפי ערכים במידה והכותרת לא תאמה
-            if (!name || !dateVal) {
-                for (let k in rawRow) {
-                    if (k === "id" || k === "rowIndex") continue;
-                    const val = String(rawRow[k] || "").trim();
-                    if (!val || val.startsWith("APP-")) continue;
-
-                    if (!dateVal && (val.match(/^\d{4}-\d{2}-\d{2}$/) \vert{}\vert{} val.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}$/))) {
-                        dateVal = val;
-                    } else if (!name && isNaN(val) && !val.includes("שולם") && !val.includes("ממתין") && !val.includes("ביט") && !val.includes("פייבוקס") && !val.includes("העברה") && val.length >= 2) {
-                        name = val;
-                    }
-                }
-            }
-
-            if (!name) name = "מטופל/ת";
+            if (!clientName) clientName = "מטופל/ת";
             if (!dateVal) dateVal = "-";
 
             const isPaid = statusVal.includes("שולם") || (docNum !== "" && docNum !== "-");
@@ -766,8 +750,8 @@
             return {
                 id: rawRow.id || idx + 1,
                 date: dateVal,
-                clientName: name,
-                clientPhone: getPatientPhoneByName(name),
+                clientName: clientName,
+                clientPhone: getPatientPhoneByName(clientName),
                 amount: amountVal,
                 status: isPaid ? "שולם" : "ממתין לתשלום",
                 isPaid: isPaid,
@@ -1058,48 +1042,56 @@
             if (found) document.getElementById("newAppAmount").value = found.rate;
         }
 
-        // סגירה מיידית בטוחה של מודאל הפגישה
-        async function saveNewAppointment() {
-            try {
-                const clientName = (document.getElementById("newAppPatientSelect")?.value || "").trim();
-                let dateInput = document.getElementById("newAppDate")?.value;
-                const amount = Number(document.getElementById("newAppAmount")?.value) || 350;
-                const paymentMethod = document.getElementById("newAppPayMethod")?.value || "ביט / פייבוקס";
+        // סגירה מיידית ומוחלטת של מודאל הפגישה
+        function saveNewAppointment() {
+            const modal = document.getElementById("addAppointmentModal");
+            if (modal) modal.style.display = "none";
 
-                if (!clientName) {
-                    showToast("⚠️ אנא בחר מטופל", "error");
-                    return;
-                }
+            const selectEl = document.getElementById("newAppPatientSelect");
+            const clientName = selectEl ? selectEl.value.trim() : "";
+            const dateEl = document.getElementById("newAppDate");
+            const dateVal = (dateEl && dateEl.value) ? dateEl.value : new Date().toISOString().slice(0, 10);
+            const amountEl = document.getElementById("newAppAmount");
+            const amountVal = amountEl ? (Number(amountEl.value) || 350) : 350;
+            const methodEl = document.getElementById("newAppPayMethod");
+            const methodVal = methodEl ? methodEl.value : "ביט / פייבוקס";
 
-                const date = dateInput || new Date().toISOString().slice(0, 10);
+            if (!clientName) {
+                showToast("⚠️ אנא בחר מטופל", "error");
+                return;
+            }
 
-                // 1. סגירה מיידית של החלון
-                document.getElementById("addAppointmentModal").style.display = "none";
+            showToast("קובע פגישה ב-Google Sheets... ⏳", "info");
 
-                // 2. עדכון מקומי מהיר
-                const clientPhone = getPatientPhoneByName(clientName);
-                appData.appointments.push({
-                    id: appData.appointments.length + 1,
-                    date, clientName, clientPhone, amount, status: "ממתין לתשלום", isPaid: false, paymentMethod, docNumber: ""
-                });
+            const clientPhone = getPatientPhoneByName(clientName);
+            appData.appointments.push({
+                id: appData.appointments.length + 1,
+                date: dateVal,
+                clientName: clientName,
+                clientPhone: clientPhone,
+                amount: amountVal,
+                status: "ממתין לתשלום",
+                isPaid: false,
+                paymentMethod: methodVal,
+                docNumber: ""
+            });
 
-                renderAll();
-                showToast("קובע פגישה ב-Google Sheets... ⏳", "info");
+            renderAll();
 
-                // 3. שליחה לגיליון ברקע
-                const url = getAppsScriptUrl();
-                if (url) {
-                    await fetch(url, {
-                        method: "POST",
-                        headers: { "Content-Type": "text/plain;charset=utf-8" },
-                        body: JSON.stringify({ action: "addAppointment", clientName, date, amount, paymentMethod })
-                    });
-                    setTimeout(fetchDataFromSheets, 1200);
-                }
-                showToast("✅ פגישה חדשה נקבעה ונשמרה!", "success");
-            } catch (err) {
-                console.error("saveNewAppointment error:", err);
-                document.getElementById("addAppointmentModal").style.display = "none";
+            const url = getAppsScriptUrl();
+            if (url) {
+                fetch(url, {
+                    method: "POST",
+                    headers: { "Content-Type": "text/plain;charset=utf-8" },
+                    body: JSON.stringify({ action: "addAppointment", clientName: clientName, date: dateVal, amount: amountVal, paymentMethod: methodVal })
+                })
+                .then(() => {
+                    showToast("✅ פגישה חדשה נקבעה ונשמרה!", "success");
+                    setTimeout(fetchDataFromSheets, 1000);
+                })
+                .catch(err => console.error(err));
+            } else {
+                showToast("✅ פגישה חדשה נקבעה!", "success");
             }
         }
 
@@ -1146,7 +1138,6 @@
             document.getElementById("reportDebtTotal").innerText = `₪${totalDebt}`;
         }
 
-        // שמירה חכמה על בחירת ה-Dropdown בעת רענון האפליקציה
         function populateDropdownFilters() {
             const selectIds = ['patListFilter', 'appPatientFilter', 'paymentPatientSelect'];
             const savedValues = {};
