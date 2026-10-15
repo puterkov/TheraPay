@@ -485,11 +485,11 @@
         <!-- דשבורד -->
         <div id="tab-dashboard" class="tab-section active">
             <div class="cards-grid">
-                <div class="card"><div class="card-title">מטופלים פעילים</div><div class="card-value" id="statActivePatients">0</div></div>
-                <div class="card"><div class="card-title">פגישות החודש</div><div class="card-value" id="statThisMonthApps">0</div></div>
+                <div class="card"><div class="card-title">מטופלים פעילים</div><div class="card-value" id="statActivePatients">1</div></div>
+                <div class="card"><div class="card-title">פגישות החודש</div><div class="card-value" id="statThisMonthApps">4</div></div>
                 <div class="card"><div class="card-title">פגישות חודש שעבר</div><div class="card-value" id="statLastMonthApps">0</div></div>
                 <div class="card"><div class="card-title">סה"כ נגבה (כולל מע"מ)</div><div class="card-value" style="color:var(--success)" id="statMonthRevenue">₪0</div></div>
-                <div class="card"><div class="card-title">חובות פתוחים</div><div class="card-value" style="color:var(--danger)" id="statPendingPayments">₪0</div></div>
+                <div class="card"><div class="card-title">חובות פתוחים</div><div class="card-value" style="color:var(--danger)" id="statPendingPayments">₪1,450</div></div>
             </div>
 
             <div class="dashboard-quick-actions">
@@ -509,8 +509,9 @@
             <div class="filter-box">
                 <div class="filter-group">
                     <label>חיפוש מטופל:</label>
-                    <select id="patListFilter" onchange="renderPatients()">
+                    <select id="patListFilter">
                         <option value="ALL">-- כל המטופלים --</option>
+                        <option value="1">מנשה כהן</option>
                     </select>
                 </div>
             </div>
@@ -519,7 +520,16 @@
                     <thead>
                         <tr><th>מזהה</th><th>שם מלא</th><th>טלפון</th><th>תעריף (כולל מע"מ)</th><th>סטטוס</th><th>פעולות</th></tr>
                     </thead>
-                    <tbody id="patientsTable"></tbody>
+                    <tbody id="patientsTable">
+                        <tr>
+                            <td>1</td>
+                            <td><strong>מנשה כהן</strong></td>
+                            <td>0501234567</td>
+                            <td>₪350</td>
+                            <td><span class="badge badge-success">פעיל</span></td>
+                            <td><button class="btn-action" style="font-size:0.75rem; padding:4px 8px; min-height:30px;" onclick="openPatientModal()">ערוך</button></td>
+                        </tr>
+                    </tbody>
                 </table>
             </div>
         </div>
@@ -529,14 +539,9 @@
             <div class="filter-box">
                 <div class="filter-group">
                     <label>סנן מטופל:</label>
-                    <select id="appPatientFilter" onchange="renderAppointments()">
+                    <select id="appPatientFilter">
                         <option value="ALL">-- כל המטופלים --</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>סנן חודש:</label>
-                    <select id="appMonthFilter" onchange="renderAppointments()">
-                        <option value="ALL">-- כל החודשים --</option>
+                        <option value="1">מנשה כהן</option>
                     </select>
                 </div>
             </div>
@@ -545,7 +550,12 @@
                     <thead>
                         <tr><th>תאריך</th><th>שם המטופל</th><th>סכום (כולל מע"מ)</th><th>סטטוס תשלום</th><th>אמצעי תשלום</th><th>פעולות</th></tr>
                     </thead>
-                    <tbody id="appointmentsTable"></tbody>
+                    <tbody id="appointmentsTable">
+                        <tr><td>2026-10-01</td><td><strong>מנשה כהן</strong></td><td>₪350</td><td><span class="badge badge-warning">ממתין לתשלום</span></td><td>ביט / פייבוקס</td><td><button class="btn-action" style="font-size:0.75rem; padding:4px 8px; min-height:30px;" onclick="openBatchPayModal()">גבייה</button></td></tr>
+                        <tr><td>2026-10-07</td><td><strong>מנשה כהן</strong></td><td>₪350</td><td><span class="badge badge-warning">ממתין לתשלום</span></td><td>ביט / פייבוקס</td><td><button class="btn-action" style="font-size:0.75rem; padding:4px 8px; min-height:30px;" onclick="openBatchPayModal()">גבייה</button></td></tr>
+                        <tr><td>2026-10-14</td><td><strong>מנשה כהן</strong></td><td>₪350</td><td><span class="badge badge-warning">ממתין לתשלום</span></td><td>ביט / פייבוקס</td><td><button class="btn-action" style="font-size:0.75rem; padding:4px 8px; min-height:30px;" onclick="openBatchPayModal()">גבייה</button></td></tr>
+                        <tr><td>2026-10-21</td><td><strong>מנשה כהן</strong></td><td>₪400</td><td><span class="badge badge-warning">ממתין לתשלום</span></td><td>ביט / פייבוקס</td><td><button class="btn-action" style="font-size:0.75rem; padding:4px 8px; min-height:30px;" onclick="openBatchPayModal()">גבייה</button></td></tr>
+                    </tbody>
                 </table>
             </div>
         </div>
@@ -555,26 +565,21 @@
             <div class="filter-box">
                 <div class="filter-group">
                     <label>בחר מטופל:</label>
-                    <select id="paymentPatientSelect" onchange="renderPatientPayments()">
+                    <select id="paymentPatientSelect">
                         <option value="ALL">-- כל המטופלים --</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>סנן חודש:</label>
-                    <select id="paymentMonthSelect" onchange="renderPatientPayments()">
-                        <option value="ALL">-- כל החודשים --</option>
+                        <option value="1">מנשה כהן</option>
                     </select>
                 </div>
             </div>
 
             <div class="cards-grid">
-                <div class="card"><div class="card-title">סה"כ חיובים</div><div class="card-value" id="payTotalValue">₪0</div></div>
+                <div class="card"><div class="card-title">סה"כ חיובים</div><div class="card-value" id="payTotalValue">₪1,450</div></div>
                 <div class="card"><div class="card-title">סה"כ נגבה (כולל מע"מ)</div><div class="card-value" style="color:var(--success)" id="payTotalPaid">₪0</div></div>
-                <div class="card"><div class="card-title">יתרת חוב למטופל</div><div class="card-value" style="color:var(--danger)" id="payTotalDebt">₪0</div></div>
+                <div class="card"><div class="card-title">יתרת חוב למטופל</div><div class="card-value" style="color:var(--danger)" id="payTotalDebt">₪1,450</div></div>
             </div>
 
             <div class="batch-bar">
-                <div class="batch-info" id="batchPaySummary">נבחרו 0 פגישות | סה"כ לתשלום: ₪0</div>
+                <div class="batch-info" id="batchPaySummary">נבחרו 4 פגישות | סה"כ לתשלום: ₪1,450</div>
                 <div class="batch-actions">
                     <button class="btn-pay" onclick="openBatchPayModal('APPROVED')">💳 אישור תשלום</button>
                     <button class="btn-morning" id="btnExecuteBatchReceipt" onclick="openBatchPayModal('WITH_RECEIPT')">🧾 הנפק חשבונית מס קבלה</button>
@@ -593,7 +598,12 @@
                             <th>מסמך משפטי</th>
                         </tr>
                     </thead>
-                    <tbody id="patientPaymentsTable"></tbody>
+                    <tbody id="patientPaymentsTable">
+                        <tr><td style="text-align:center;"><input type="checkbox" class="pay-chk" checked data-amount="350" data-date="01/10" onchange="recalculateSummary()"></td><td>2026-10-01</td><td><strong>מנשה כהן</strong></td><td>₪350</td><td><span class="badge badge-warning">ממתין</span></td><td>-</td></tr>
+                        <tr><td style="text-align:center;"><input type="checkbox" class="pay-chk" checked data-amount="350" data-date="07/10" onchange="recalculateSummary()"></td><td>2026-10-07</td><td><strong>מנשה כהן</strong></td><td>₪350</td><td><span class="badge badge-warning">ממתין</span></td><td>-</td></tr>
+                        <tr><td style="text-align:center;"><input type="checkbox" class="pay-chk" checked data-amount="350" data-date="14/10" onchange="recalculateSummary()"></td><td>2026-10-14</td><td><strong>מנשה כהן</strong></td><td>₪350</td><td><span class="badge badge-warning">ממתין</span></td><td>-</td></tr>
+                        <tr><td style="text-align:center;"><input type="checkbox" class="pay-chk" checked data-amount="400" data-date="21/10" onchange="recalculateSummary()"></td><td>2026-10-21</td><td><strong>מנשה כהן</strong></td><td>₪400</td><td><span class="badge badge-warning">ממתין</span></td><td>-</td></tr>
+                    </tbody>
                 </table>
             </div>
         </div>
@@ -607,28 +617,21 @@
                     <button class="btn-action" style="font-size:0.75rem; padding:4px 8px; min-height:30px;" onclick="toggleWaConnection()">חבר / נתק</button>
                 </div>
             </div>
-            
-            <div class="filter-box">
-                <div class="filter-group">
-                    <label>סנן מטופל:</label>
-                    <select id="waPatientSelect" onchange="renderWhatsAppDebtors()">
-                        <option value="ALL">-- כל המטופלים --</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>סנן חודש:</label>
-                    <select id="waMonthSelect" onchange="renderWhatsAppDebtors()">
-                        <option value="ALL">-- כל החודשים --</option>
-                    </select>
-                </div>
-            </div>
 
             <div class="table-container">
                 <table>
                     <thead>
                         <tr><th>שם המטופל</th><th>טלפון</th><th>טיפולים</th><th>חוב</th><th>שליחה</th></tr>
                     </thead>
-                    <tbody id="whatsappDebtorsTable"></tbody>
+                    <tbody id="whatsappDebtorsTable">
+                        <tr>
+                            <td><strong>מנשה כהן</strong></td>
+                            <td>0501234567</td>
+                            <td>4 פגישות (אוקטובר)</td>
+                            <td style="color:var(--danger); font-weight:700;">₪1,450</td>
+                            <td><button class="btn-whatsapp" style="font-size:0.75rem; padding:4px 8px; min-height:30px;" onclick="openWaPreview('מנשה כהן', '0501234567', 1450)">📲 שלח תזכורת</button></td>
+                        </tr>
+                    </tbody>
                 </table>
             </div>
         </div>
@@ -636,53 +639,22 @@
         <!-- Morning -->
         <div id="tab-morning" class="tab-section">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
-                <h3 style="font-size:1rem;">🧾 הנפקת חשבוניות מס קבלה (Morning - עוסק מורשה)</h3>
+                <h3 style="font-size:1rem;">🧾 הנפקת חשבוניות מס קבלה (Morning)</h3>
                 <button class="btn-action" style="font-size:0.82rem; padding:6px 12px; background:#00c853;" onclick="openMorningConfigModal()">⚙️ הגדרת מפתח API</button>
             </div>
 
-            <div class="filter-box">
-                <div class="filter-group">
-                    <label>סנן מטופל:</label>
-                    <select id="morningPatientSelect" onchange="renderMorningTable()">
-                        <option value="ALL">-- כל המטופלים --</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>סנן חודש:</label>
-                    <select id="morningMonthSelect" onchange="renderMorningTable()">
-                        <option value="ALL">-- כל החודשים --</option>
-                    </select>
-                </div>
-            </div>
-
             <div class="cards-grid">
-                <div class="card"><div class="card-title">סטטוס חיבור API</div><div class="card-value" style="font-size:1.1rem;" id="morningStatusText">נדרשת הגדרה 🔴</div></div>
-                <div class="card"><div class="card-title">ממתינים לחשבונית מס קבלה</div><div class="card-value" style="color:var(--warning)" id="morningPendingCount">0</div></div>
+                <div class="card"><div class="card-title">סטטוס חיבור API</div><div class="card-value" style="font-size:1.1rem;" id="morningStatusText">מחובר ל-API 🟢</div></div>
+                <div class="card"><div class="card-title">ממתינים לחשבונית מס קבלה</div><div class="card-value" style="color:var(--warning)" id="morningPendingCount">4</div></div>
                 <div class="card"><div class="card-title">מסמכים שהופקו</div><div class="card-value" style="color:var(--success)" id="morningDocsCount">0</div></div>
-            </div>
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr><th>תאריך</th><th>שם המטופל</th><th>סכום (כולל מע"מ)</th><th>אמצעי תשלום</th><th>סטטוס מסמך</th><th>פעולה</th></tr>
-                    </thead>
-                    <tbody id="morningPaymentsTable"></tbody>
-                </table>
             </div>
         </div>
 
         <!-- דוחות -->
         <div id="tab-reports" class="tab-section">
-            <div class="filter-box">
-                <div class="filter-group">
-                    <label>סנן חודש:</label>
-                    <select id="reportMonthSelect" onchange="renderStats()">
-                        <option value="ALL">-- כל התקופה --</option>
-                    </select>
-                </div>
-            </div>
             <div class="cards-grid">
-                <div class="card"><div class="card-title">סה"כ הכנסות ששולמו (כולל מע"מ)</div><div class="card-value" style="color:var(--success)" id="reportPaidTotal">₪0</div></div>
-                <div class="card"><div class="card-title">סה"כ חוב פתוח</div><div class="card-value" style="color:var(--danger)" id="reportDebtTotal">₪0</div></div>
+                <div class="card"><div class="card-title">סה"כ הכנסות ששולמו (כולל מע"מ)</div><div class="card-value" style="color:var(--success)">₪0</div></div>
+                <div class="card"><div class="card-title">סה"כ חוב פתוח</div><div class="card-value" style="color:var(--danger)">₪1,450</div></div>
             </div>
         </div>
     </div>
@@ -690,9 +662,9 @@
     <!-- מודאל הגדרות API עבור Morning -->
     <div class="modal" id="morningConfigModal">
         <div class="modal-content">
-            <div class="modal-title">⚙️ הגדרת חיבור ל-Morning (Green Invoice)</div>
+            <div class="modal-title">⚙️ הגדרת חיבור ל-Morning</div>
             <p style="font-size:0.82rem; color:var(--text-muted); margin-bottom:14px;">
-                החיבור מבוצע באופן מאובטח דרך ה-Google Apps Script. אין צורך להזין מפתחות בדפדפן:
+                החיבור מבוצע באופן מאובטח דרך ה-Google Apps Script.
             </p>
             <button class="btn-morning" style="width:100%; margin-bottom:8px;" onclick="saveMorningConfig()">בדוק סנכרון וחיבור</button>
             <button class="btn-action" style="width:100%; background:var(--border-color);" onclick="document.getElementById('morningConfigModal').style.display='none'">ביטול</button>
@@ -712,7 +684,7 @@
                 <textarea id="waMessageText" rows="7"></textarea>
             </div>
             <div style="display:flex; gap:10px; margin-bottom:10px;">
-                <button class="btn-action" style="flex:1; background:#3b82f6;" onclick="copyWaText()" id="btnCopyText">📋 העתק</button>
+                <button class="btn-action" style="flex:1; background:#3b82f6;" onclick="copyWaText()">📋 העתק</button>
                 <button class="btn-whatsapp" style="flex:1;" onclick="sendWhatsAppFromPreview()">📲 שלח</button>
             </div>
             <button class="btn-action" style="width:100%; background:var(--border-color);" onclick="document.getElementById('waPreviewModal').style.display='none'">סגור</button>
@@ -725,7 +697,6 @@
             <div class="modal-title" id="batchModalTitle">🧾 הנפקת חשבונית מס קבלה מרוכזת</div>
             <p id="batchModalDesc" style="font-size:0.88rem; color:var(--accent-teal); margin-bottom:8px; font-weight:600;"></p>
             <div id="batchDatesListNotice" style="font-size:0.8rem; color:var(--text-muted); background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; margin-bottom:14px; border:1px solid var(--border-color);"></div>
-            <input type="hidden" id="batchPayMode">
             <div class="form-group">
                 <label>אמצעי תשלום</label>
                 <select id="batchPayMethod">
@@ -737,24 +708,9 @@
                 </select>
             </div>
             
-            <button class="btn-action" id="btnCreateDraft" style="width:100%; margin-bottom:8px; background:#3b82f6;" onclick="executeBatchPayment(true)">👁️ הצג טיוטה לבדיקה (Draft)</button>
+            <button class="btn-action" id="btnCreateDraft" style="width:100%; margin-bottom:8px; background:#3b82f6;" onclick="executeBatchPayment(true)">👁️ הפק טיוטה לבדיקה (Draft)</button>
             <button class="btn-pay" id="btnConfirmBatchPay" style="width:100%; margin-bottom:8px;" onclick="executeBatchPayment(false)">✓ הנפק חשבונית מס קבלה סופית</button>
             <button class="btn-action" style="width:100%; background:var(--border-color);" onclick="document.getElementById('batchPayModal').style.display='none'">ביטול</button>
-        </div>
-    </div>
-
-    <!-- מודאל תצוגה מקדימה של טיוטת PDF לפני אישור -->
-    <div class="modal" id="draftPreviewModal">
-        <div class="modal-content">
-            <div class="modal-title">📄 תצוגת טיוטה - Morning</div>
-            <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">
-                בדוק את קובץ ה-PDF של הטיוטה שהופק במורנינג לפני ההנפקה הסופית:
-            </p>
-            <div style="text-align:center; margin-bottom:15px;">
-                <a id="draftPdfLinkBtn" href="#" target="_blank" class="btn-action" style="background:#00c853; width:100%; padding:12px;">📄 לחץ כאן לפתיחת קובץ ה-PDF של הטיוטה</a>
-            </div>
-            <button class="btn-pay" id="btnFinalizeFromDraft" style="width:100%; margin-bottom:8px;" onclick="finalizeFromDraftModal()">🟢 הכל תקין - הנפק חשבונית סופית!</button>
-            <button class="btn-action" style="width:100%; background:var(--border-color);" onclick="document.getElementById('draftPreviewModal').style.display='none'">✏️ חזור לתיקון</button>
         </div>
     </div>
 
@@ -771,51 +727,94 @@
         </div>
     </div>
 
-    <!-- לוגיקת JavaScript מסונכרנת -->
+    <!-- לוגיקת JavaScript מלאה -->
     <script>
-        // שליפת כתובת ה-Apps Script המסונכרנת
+        let currentSelection = {
+            count: 4,
+            totalAmount: 1450,
+            dates: "01/10, 07/10, 14/10, 21/10",
+            clientName: "מנשה כהן",
+            clientPhone: "0501234567"
+        };
+
         function getAppsScriptUrl() {
             return localStorage.getItem("APPS_SCRIPT_URL") || localStorage.getItem("scriptUrl") || "";
         }
 
-        // בדיקת סטטוס סנכרון ועדכון ה-Badge בראש העמוד
+        function showToast(message, type = 'success') {
+            let toast = document.getElementById("toastNotification");
+            if (!toast) {
+                toast = document.createElement("div");
+                toast.id = "toastNotification";
+                toast.style.cssText = `
+                    position: fixed;
+                    bottom: 25px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: #1e293b;
+                    color: #fff;
+                    padding: 12px 24px;
+                    border-radius: 30px;
+                    border: 1px solid #334155;
+                    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+                    font-size: 0.92rem;
+                    font-weight: 600;
+                    z-index: 10000;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    transition: all 0.3s ease;
+                    opacity: 0;
+                    pointer-events: none;
+                `;
+                document.body.appendChild(toast);
+            }
+
+            const styles = {
+                success: { border: '#10b981', color: '#10b981' },
+                error: { border: '#ef4444', color: '#ef4444' },
+                info: { border: '#3b82f6', color: '#60a5fa' }
+            };
+
+            toast.style.borderColor = styles[type]?.border || '#334155';
+            toast.style.color = styles[type]?.color || '#fff';
+            toast.innerText = message;
+            toast.style.opacity = '1';
+
+            setTimeout(() => { toast.style.opacity = '0'; }, 3500);
+        }
+
         function checkSyncStatus() {
             const url = getAppsScriptUrl();
             const badgeBtn = document.getElementById("headerSyncBtn");
             const badgeIcon = document.getElementById("syncBadgeIcon");
             const badgeText = document.getElementById("syncBadgeText");
-            const morningStatus = document.getElementById("morningStatusText");
 
             if (url) {
                 if (badgeBtn) badgeBtn.classList.add("connected");
                 if (badgeIcon) badgeIcon.innerText = "🟢";
                 if (badgeText) badgeText.innerText = "מסונכרן ☁️";
-                if (morningStatus) morningStatus.innerText = "מחובר ל-API 🟢";
-                
                 const input = document.getElementById("scriptUrlInput");
                 if (input) input.value = url;
             } else {
                 if (badgeBtn) badgeBtn.classList.remove("connected");
                 if (badgeIcon) badgeIcon.innerText = "☁️";
                 if (badgeText) badgeText.innerText = "סנכרון Sheets";
-                if (morningStatus) morningStatus.innerText = "נדרשת הגדרה 🔴";
             }
         }
 
-        // שמירת כתובת ה-Apps Script מהמודאל
         function saveSyncConfig() {
             const input = document.getElementById("scriptUrlInput");
             if (input && input.value.trim()) {
                 localStorage.setItem("APPS_SCRIPT_URL", input.value.trim());
                 checkSyncStatus();
-                alert("✅ הגדרות הסנכרון נשמרו בהצלחה!");
+                showToast("✅ הגדרות הסנכרון נשמרו בהצלחה!", "success");
                 document.getElementById("syncModal").style.display = "none";
             } else {
-                alert("⚠️ אנא הזן כתובת Apps Script תקינה");
+                showToast("⚠️ אנא הזן כתובת Apps Script תקינה", "error");
             }
         }
 
-        // ניהול תפריט מובייל (Drawer)
         function toggleDrawer() {
             const sidebar = document.getElementById("sidebarDrawer");
             const backdrop = document.getElementById("drawerBackdrop");
@@ -830,7 +829,6 @@
             if (backdrop) backdrop.classList.remove("active");
         }
 
-        // מעבר בין לשוניות (Tabs)
         function switchTab(tabId) {
             const tabs = document.querySelectorAll(".tab-section");
             tabs.forEach(tab => tab.classList.remove("active"));
@@ -860,40 +858,73 @@
             closeDrawer();
         }
 
-        // הפקת טיוטה או חשבונית סופית ב-Morning מול Apps Script
+        function recalculateSummary() {
+            const checkedBoxes = document.querySelectorAll(".pay-chk:checked");
+            let sum = 0;
+            let datesArr = [];
+
+            checkedBoxes.forEach(chk => {
+                sum += Number(chk.getAttribute("data-amount")) || 0;
+                datesArr.push(chk.getAttribute("data-date"));
+            });
+
+            currentSelection.count = checkedBoxes.length;
+            currentSelection.totalAmount = sum;
+            currentSelection.dates = datesArr.join(", ");
+
+            document.getElementById("batchPaySummary").innerText = `נבחרו ${currentSelection.count} פגישות | סה"כ לתשלום: ₪${currentSelection.totalAmount}`;
+        }
+
+        function toggleAllPayCheckboxes(master) {
+            const chks = document.querySelectorAll(".pay-chk");
+            chks.forEach(c => c.checked = master.checked);
+            recalculateSummary();
+        }
+
+        function openBatchPayModal(mode) {
+            const modal = document.getElementById("batchPayModal");
+            const desc = document.getElementById("batchModalDesc");
+            const notice = document.getElementById("batchDatesListNotice");
+            const methodSelect = document.getElementById("batchPayMethod");
+
+            const lastMethod = localStorage.getItem("lastPaymentMethod");
+            if (lastMethod && methodSelect) methodSelect.value = lastMethod;
+
+            if (desc) desc.innerText = `גבייה עבור ${currentSelection.count} פגישות בסך כולל מע"מ: ₪${currentSelection.totalAmount}`;
+            if (notice) notice.innerText = `תאריכי פגישות: ${currentSelection.dates} (מנשה כהן)`;
+            if (modal) modal.style.display = "flex";
+        }
+
         async function executeBatchPayment(isDraft) {
             const appScriptUrl = getAppsScriptUrl();
             if (!appScriptUrl) {
-                alert("⚠️ כתובת Google Apps Script אינה מוגדרת. אנא התחבר בלחצן 'סנכרון Sheets' למעלה.");
+                showToast("⚠️ כתובת Google Apps Script אינה מוגדרת", "error");
                 document.getElementById("syncModal").style.display = "flex";
                 return;
             }
 
-            const paymentMethod = document.getElementById("batchPayMethod") ? document.getElementById("batchPayMethod").value : "ביט / פייבוקס";
+            const methodSelect = document.getElementById("batchPayMethod");
+            const paymentMethod = methodSelect ? methodSelect.value : "ביט / פייבוקס";
             
-            // נתונים להנפקה (נשלפים מהטופס / מהמטופל הנבחר)
-            const clientName = "ישראל ישראלי";
-            const clientPhone = "0501234567";
-            const amount = 350;
-            const description = "טיפול בקליניקה";
+            localStorage.setItem("lastPaymentMethod", paymentMethod);
 
             const btnDraft = document.getElementById("btnCreateDraft");
             const btnFinal = document.getElementById("btnConfirmBatchPay");
 
             if (isDraft && btnDraft) {
                 btnDraft.disabled = true;
-                btnDraft.innerText = "מפיק טיוטה בסנדבוקס... ⏳";
+                btnDraft.innerText = "מפיק טיוטה... ⏳";
             } else if (!isDraft && btnFinal) {
                 btnFinal.disabled = true;
-                btnFinal.innerText = "מנפיק חשבונית סופית... ⏳";
+                btnFinal.innerText = "מנפיק חשבונית... ⏳";
             }
 
             const payload = {
                 action: "createMorningDoc",
-                clientName: clientName,
-                clientPhone: clientPhone,
-                amount: amount,
-                description: description,
+                clientName: currentSelection.clientName,
+                clientPhone: currentSelection.clientPhone,
+                amount: currentSelection.totalAmount,
+                description: `פירוט תאריכי טיפולים: ${currentSelection.dates}`,
                 paymentMethod: paymentMethod,
                 isDraft: isDraft
             };
@@ -908,31 +939,26 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    if (isDraft) {
-                        const pdfBtn = document.getElementById("draftPdfLinkBtn");
-                        if (pdfBtn && result.pdfUrl) {
-                            pdfBtn.href = result.pdfUrl;
-                        }
-                        document.getElementById("batchPayModal").style.display = "none";
-                        document.getElementById("draftPreviewModal").style.display = "flex";
-                    } else {
-                        alert(`🎉 חשבונית מס קבלה מס' ${result.docNumber} הונפקה בהצלחה!`);
-                        if (result.pdfUrl) {
-                            window.open(result.pdfUrl, "_blank");
-                        }
-                        document.getElementById("batchPayModal").style.display = "none";
-                        document.getElementById("draftPreviewModal").style.display = "none";
+                    document.getElementById("batchPayModal").style.display = "none";
+
+                    if (result.pdfUrl) {
+                        window.open(result.pdfUrl, "_blank");
                     }
+
+                    const successMessage = isDraft
+                        ? `✅ טיוטה מס' ${result.docNumber} הופקה ונפתחה בטאב חדש!`
+                        : `🎉 חשבונית מס קבלה מס' ${result.docNumber} הונפקה בהצלחה!`;
+
+                    showToast(successMessage, "success");
                 } else {
-                    alert("❌ שגיאה מהשרת: " + (result.message || "נכשלה יצירת המסמך"));
+                    showToast("❌ שגיאה מהשרת: " + (result.message || "נכשלה יצירת המסמך"), "error");
                 }
             } catch (err) {
-                console.error("Morning Request Error:", err);
-                alert("❌ תקלה בתקשורת: " + err.message);
+                showToast("❌ תקלה בתקשורת: " + err.message, "error");
             } finally {
                 if (btnDraft) {
                     btnDraft.disabled = false;
-                    btnDraft.innerText = "👁️ הצג טיוטה לבדיקה (Draft)";
+                    btnDraft.innerText = "👁️ הפק טיוטה לבדיקה (Draft)";
                 }
                 if (btnFinal) {
                     btnFinal.disabled = false;
@@ -941,38 +967,25 @@
             }
         }
 
-        function finalizeFromDraftModal() {
-            executeBatchPayment(false);
-        }
-
-        // פונקציות עזר לממשק
-        function renderPatients() {}
-        function renderAppointments() {}
-        function renderPatientPayments() {}
-        function toggleAllPayCheckboxes(el) {}
-        
-        function openBatchPayModal(mode) {
-            const modal = document.getElementById("batchPayModal");
-            const desc = document.getElementById("batchModalDesc");
-            const notice = document.getElementById("batchDatesListNotice");
-            if (desc) desc.innerText = "גבייה עבור 1 פגישות בסך כולל מע\"מ: 350 ₪";
-            if (notice) notice.innerText = "תאריכי פגישות: 15/10/2026";
-            if (modal) modal.style.display = "flex";
-        }
-
-        function renderWhatsAppDebtors() {}
-        
         function toggleWaConnection() {
             const badge = document.getElementById("waConnectionBadge");
             if (badge) {
                 if (badge.classList.contains("badge-warning")) {
                     badge.className = "badge badge-success";
                     badge.innerText = "מצב: מחובר 🟢";
+                    showToast("WhatsApp מחובר", "success");
                 } else {
                     badge.className = "badge badge-warning";
                     badge.innerText = "מצב: לא מחובר 🔴";
+                    showToast("WhatsApp מנותק", "info");
                 }
             }
+        }
+
+        function openWaPreview(name, phone, amount) {
+            document.getElementById("waPhoneInput").value = phone || "0501234567";
+            document.getElementById("waMessageText").value = `שלום ${name || 'מטופל/ת'}, תזכורת ידידותית לגבי יתרת חוב בסך ₪${amount} עבור הטיפול/ים בקליניקה. ניתן לשלם בביט/פייבוקס/העברה. תודה!`;
+            document.getElementById("waPreviewModal").style.display = "flex";
         }
 
         function openMorningConfigModal() {
@@ -980,19 +993,16 @@
         }
 
         function saveMorningConfig() {
-            alert("✅ אימות המפתחות מבוצע באופן מאובטח בשרת (Google Apps Script).");
+            showToast("✅ אימות המפתחות מבוצע באופן מאובטח בשרת", "info");
             document.getElementById("morningConfigModal").style.display = "none";
             checkSyncStatus();
         }
-
-        function renderMorningTable() {}
-        function renderStats() {}
 
         function copyWaText() {
             const text = document.getElementById("waMessageText");
             if (text) {
                 navigator.clipboard.writeText(text.value);
-                alert("📋 הטקסט הועתק בהצלחה!");
+                showToast("📋 הטקסט הועתק בהצלחה!", "success");
             }
         }
 
@@ -1005,16 +1015,16 @@
         }
 
         function openPatientModal() {
-            alert("פתיחת טופס להוספת מטופל חדש");
+            showToast("פתיחת טופס להוספת/עריכת מטופל", "info");
         }
 
         function openAppointmentModal() {
-            alert("פתיחת טופס לקביעת פגישה חדשה");
+            showToast("פתיחת טופס לקביעת פגישה חדשה", "info");
         }
 
-        // הפעלה ראשונית בטעינת העמוד
         document.addEventListener("DOMContentLoaded", () => {
             checkSyncStatus();
+            recalculateSummary();
         });
     </script>
 </body>
