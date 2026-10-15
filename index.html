@@ -338,7 +338,6 @@
     </style>
 
     <script>
-        // הגדרת משתנים ופונקציות בראש הדף בצורה מוקדמת ובטוחה
         window.appData = {
             patients: [{ id: 1, name: "נעמי", phone: "0500000000", rate: 350 }],
             appointments: [{ id: 1, date: "2026-10-14", clientName: "נעמי", clientPhone: "0500000000", amount: 350, status: "ממתין לתשלום", isPaid: false, paymentMethod: "ביט / פייבוקס", docNumber: "" }]
@@ -523,36 +522,46 @@
         }
 
         function parseAppointmentRow(rawRow, idx) {
-            var keys = Object.keys(rawRow).filter(function(k) { return k !== "id" && k !== "rowIndex"; });
-            var clientName = "", dateVal = "", amountVal = 350, statusVal = "", docNum = "";
+            // התאמה מדויקת לפי הכותרות ב-Google Sheets
+            var clientName = rawRow["שם המטופל"] || rawRow["שם"] || rawRow["מטופל"] || rawRow.clientName || "";
+            var dateVal = rawRow["תאריך"] || rawRow["תאריך ושעה"] || rawRow.date || "";
+            var amountVal = Number(rawRow["סכום לתשלום"] || rawRow["סכום"] || rawRow.amount) || 350;
+            var statusVal = rawRow["סטטוס תשלום"] || rawRow["סטטוס"] || rawRow.status || "";
+            var docNum = rawRow["מספר חשבונית"] || rawRow.docNumber || "";
 
-            var allVals = keys.map(function(k) { return String(rawRow[k] || "").trim(); }).filter(function(v) { return v !== ""; });
+            // מנגנון גיבוי גמיש
+            if (!clientName || !dateVal) {
+                var keys = Object.keys(rawRow).filter(function(k) { return k !== "id" && k !== "rowIndex"; });
+                var allVals = keys.map(function(k) { return String(rawRow[k] || "").trim(); }).filter(function(v) { return v !== ""; });
 
-            for (var i = 0; i < allVals.length; i++) {
-                var val = allVals[i];
-                if (val.startsWith("APP-")) continue;
+                for (var i = 0; i < allVals.length; i++) {
+                    var val = allVals[i];
+                    if (val.startsWith("APP-")) continue;
 
-                if ((val.match(/^\d{4}-\d{2}-\d{2}$/) || val.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}$/)) && !dateVal) {
-                    dateVal = val;
-                }
-                else if (!isNaN(val) && Number(val) >= 50 && Number(val) <= 10000) {
-                    amountVal = Number(val);
-                }
-                else if (val.includes("ביט") || val.includes("פייבוקס") || val.includes("שולם") || val.includes("ממתין") || val.includes("העברה") || val.includes("אשראי")) {
-                    if (!statusVal) statusVal = val;
-                }
-                else if (val.match(/^\d{4,8}$/) && !docNum) {
-                    docNum = val;
-                }
-                else if (isNaN(val) && !val.includes("http") && !val.includes("חשבונית") && val.length >= 2) {
-                    if (!clientName) clientName = val;
+                    var isDate = val.match(/^\d{4}-\d{2}-\d{2}$/) || val.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}$/);
+
+                    if (isDate) {
+                        if (!dateVal) dateVal = val;
+                    }
+                    else if (!isNaN(val) && Number(val) >= 50 && Number(val) <= 10000) {
+                        if (!amountVal || amountVal === 350) amountVal = Number(val);
+                    }
+                    else if (val.includes("ביט") || val.includes("פייבוקס") || val.includes("שולם") || val.includes("ממתין") || val.includes("העברה") || val.includes("אשראי")) {
+                        if (!statusVal) statusVal = val;
+                    }
+                    else if (val.match(/^\d{4,8}$/) && !docNum) {
+                        docNum = val;
+                    }
+                    else if (!isDate && isNaN(val) && !val.includes("http") && !val.includes("חשבונית") && val.length >= 2) {
+                        if (!clientName) clientName = val;
+                    }
                 }
             }
 
             if (!clientName) clientName = "מטופל/ת";
             if (!dateVal) dateVal = "-";
 
-            var isPaid = statusVal.includes("שולם") || (docNum !== "" && docNum !== "-");
+            var isPaid = String(statusVal).includes("שולם") || (docNum !== "" && docNum !== "-");
 
             return {
                 id: rawRow.id || (idx + 1),
