@@ -23,7 +23,8 @@ function fixture(){
   ])};
   const props={APP_ACCESS_TOKEN:'a'.repeat(48),MORNING_API_KEY:'test-only',MORNING_API_SECRET:'test-only',MORNING_ENV:'sandbox'};
   const ss={getSheetByName:n=>sheets[n],insertSheet:n=>(sheets[n]=new Sheet(n,[]))};
-  let documentCalls=0;let remoteMode='ok';let locked=false;
+  let documentCalls=0;let remoteMode='ok';let locked=false;let documentPayload;
+  let clients=[{id:'MORNING-1',name:'נועה',phone:'0541234567',active:true,send:true,emails:['invoice@example.com'],taxId:'123456789'}];
   const response=(status,data)=>({getResponseCode:()=>status,getContentText:()=>JSON.stringify(data)});
   const context={console,Date,JSON,Number,String,Array,Object,Math,isFinite,isNaN,Error,
     SpreadsheetApp:{getActiveSpreadsheet:()=>ss,openById:()=>ss,flush:()=>{}},
@@ -31,12 +32,12 @@ function fixture(){
     PropertiesService:{getScriptProperties:()=>({getProperty:k=>props[k],setProperty:(k,v)=>props[k]=v})},
     LockService:{getScriptLock:()=>({tryLock:()=>{locked=true;return true;},hasLock:()=>locked,releaseLock:()=>locked=false})},
     Utilities:{formatDate:(date)=>date.toISOString().slice(0,10),getUuid:()=>crypto.randomUUID()},
-    UrlFetchApp:{fetch:(url,options)=>{if(url.includes('oauth/token'))return response(200,{access_token:'fake-token'});documentCalls++;if(remoteMode==='timeout')throw new Error('timeout');if(remoteMode==='reject')return response(400,{errorMessage:'invalid payment'});return response(200,{id:'DOC-1',number:101,url:{he:'https://example.com/doc.pdf'}});}}
+    UrlFetchApp:{fetch:(url,options)=>{if(url.includes('oauth/token'))return response(200,{access_token:'fake-token'});if(url.endsWith('/clients/search'))return response(200,{items:clients,total:clients.length,pages:1});if(url.includes('/clients/'))return response(200,clients.find(c=>url.endsWith('/'+c.id))||{});documentCalls++;documentPayload=JSON.parse(options.payload);if(remoteMode==='timeout')throw new Error('timeout');if(remoteMode==='reject')return response(400,{errorMessage:'invalid payment'});return response(200,{id:'DOC-1',number:101,url:{he:'https://example.com/doc.pdf'}});}}
   };
   vm.createContext(context);vm.runInContext(source,context);
   const call=(action,extra={})=>JSON.parse(context.doPost({postData:{contents:JSON.stringify({accessToken:props.APP_ACCESS_TOKEN,action,...extra})}}).body);
-  const req={requestId:'request-1234567890',patientId:'PAT-1',ids:['APP-1'],amount:400,paymentMethod:'bit',paymentDate:'2026-01-01'};
-  return {context,sheets,writes,props,call,req,get documentCalls(){return documentCalls;},set remoteMode(v){remoteMode=v;},set failPaidOnce(v){failPaidOnce=v;}};
+  const req={requestId:'request-1234567890',patientId:'PAT-1',ids:['APP-1'],amount:400,paymentMethod:'bit',paymentDate:'2026-01-01',morningClientId:'MORNING-1',recipientEmails:['invoice@example.com']};
+  return {context,sheets,writes,props,call,req,get clients(){return clients;},set clients(v){clients=v;},get documentPayload(){return documentPayload;},get documentCalls(){return documentCalls;},set remoteMode(v){remoteMode=v;},set failPaidOnce(v){failPaidOnce=v;}};
 }
 test('GET contains no patient data; POST requires a clinic access token',()=>{const f=fixture();assert.equal(JSON.parse(f.context.doGet().body).patients,undefined);assert.equal(f.call('getAllData',{accessToken:''}).code,'AUTH');assert.equal(f.writes.length,0);});
 test('read is non-mutating and reads actual rates, IDs and header positions',()=>{const f=fixture();const r=f.call('getAllData');assert.equal(r.success,true);assert.equal(r.patients[0].rate,400);assert.equal(r.appointments[0].id,'APP-1');assert.equal(r.appointments[0].patientId,'PAT-1');assert.equal(f.writes.length,0);});
@@ -48,3 +49,11 @@ test('remote success with Sheets failure can be repaired without reissuing',()=>
 test('rejected remote document never marks any appointment paid',()=>{const f=fixture();f.remoteMode='reject';assert.equal(f.call('createMorningDoc',f.req).code,'MORNING_REJECTED');assert.notEqual(f.sheets.Appointments.rows[1][5],'שולם');});
 test('patient and appointment writes match headers and are retry safe',()=>{const f=fixture();const p={requestId:'patient-request-12345',name:'תמר',phone:'0541111111',rate:450};const result=f.call('addPatient',p);assert.equal(result.success,true);assert.equal(f.call('addPatient',p).patientId,result.patientId);assert.deepEqual(f.sheets.Patients.rows[3].slice(1),['תמר','0541111111',450,'פעיל']);assert.equal(f.sheets.Patients.rows.length,4);const a={requestId:'appointment-request-1234',patientId:result.patientId,date:'2026-10-15',amount:450};assert.equal(f.call('addAppointment',a).success,true);assert.equal(f.call('addAppointment',a).success,true);const row=f.sheets.Appointments.rows[4];assert.equal(row[3],'תמר');assert.equal(row[4],450);assert.equal(row[6],'');assert.equal(row[7],'');assert.equal(row[10],result.patientId);assert.equal(f.sheets.Appointments.rows.length,5);});
 test('header reordering does not change the target columns',()=>{const f=fixture();const t=f.sheets.Appointments;for(const row of t.rows){[row[6],row[7]]=[row[7],row[6]];}assert.equal(f.call('createMorningDoc',f.req).success,true);assert.equal(t.rows[1][6],'101');assert.equal(t.rows[1][7],'ביט');});
+test('recipient lookup reads Morning registered email without issuing or changing sheets',()=>{const f=fixture();const r=f.call('getMorningRecipient',{patientId:'PAT-1'});assert.equal(r.success,true);assert.deepEqual(r.recipient.emails,['invoice@example.com']);assert.equal(f.documentCalls,0);assert.equal(f.writes.length,0);});
+test('invoice uses existing Morning client and registered email with PDF attachment',()=>{const f=fixture();const r=f.call('createMorningDoc',f.req);assert.equal(r.success,true);assert.equal(r.emailRequested,true);assert.equal(f.documentPayload.client.id,'MORNING-1');assert.deepEqual(f.documentPayload.client.emails,['invoice@example.com']);assert.equal(f.documentPayload.client.add,false);assert.equal(f.documentPayload.client.taxId,'123456789');assert.equal(f.documentPayload.attachment,true);assert.equal(f.documentPayload.signed,true);});
+test('missing email, ambiguous clients, changed recipient or disabled mail blocks before issuance',()=>{
+  for(const change of [f=>f.clients[0].emails=[],f=>f.clients.push({...f.clients[0],id:'MORNING-2'}),f=>f.clients[0].emails=['changed@example.com'],f=>f.clients[0].send=false,f=>f.req.morningClientId='DIFFERENT']){
+    const f=fixture();change(f);assert.equal(f.call('createMorningDoc',f.req).success,false);assert.equal(f.documentCalls,0);
+  }
+});
+test('custom clinic passphrase is accepted at 16+ characters and short passphrases rejected',()=>{const f=fixture();f.props.APP_ACCESS_TOKEN='my-own-clinic-passphrase';assert.equal(f.call('getAllData').success,true);f.props.APP_ACCESS_TOKEN='1234';assert.equal(f.call('getAllData').code,'AUTH');});

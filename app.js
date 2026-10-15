@@ -3,7 +3,8 @@ import { today, money, validDate, defaultSelection, selectedAppointments, total,
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const demo = new URLSearchParams(location.search).get('demo') === '1';
-const state = { patients:[], appointments:[], patientId:'', month:today().slice(0,7), appointmentsPatient:'ALL', appointmentsMonth:'ALL', selected:new Set(), view:'dashboard', connected:false, loaded:false, loading:false, refreshFailed:false, environment:'sandbox', morningConfigured:false, busy:false };
+const state = { patients:[], appointments:[], patientId:'', month:today().slice(0,7), appointmentsPatient:'ALL', appointmentsMonth:'ALL', selected:new Set(), view:'dashboard', connected:false, loaded:false, loading:false, refreshFailed:false, environment:'sandbox', morningConfigured:false, emailDelivery:false, recipient:null, busy:false };
+let recipientLookup=0;
 let attempt = readAttempt();
 function readAttempt() { try { return JSON.parse(sessionStorage.getItem('THERAPAY_ATTEMPT') || 'null'); } catch { return null; } }
 function notice(text, error = false) { $('notice').textContent = text; $('notice').hidden = false; $('notice').classList.toggle('error', error); }
@@ -12,10 +13,13 @@ function chosen() { return selectedAppointments(state.appointments, state.select
 function apiUrl() { return localStorage.getItem('APPS_SCRIPT_URL') || 'https://script.google.com/macros/s/AKfycbwQbZlqV_kHG6IaffOtnoJ7x1ufiWa9Z9rFJs7eUaLO1hc-d1-4l2WeiEBaZFCn5uq5aA/exec'; }
 function uuid() { return crypto.randomUUID(); }
 function safeLink(url) { try { const u = new URL(url); return u.protocol === 'https:' ? u.href : ''; } catch { return ''; } }
+function accessToken(){return sessionStorage.getItem('THERAPAY_ACCESS_TOKEN')||localStorage.getItem('THERAPAY_ACCESS_TOKEN')||'';}
+function rememberAccess(token,remember){sessionStorage.setItem('THERAPAY_ACCESS_TOKEN',token);localStorage.setItem('THERAPAY_REMEMBER',String(remember));if(remember)localStorage.setItem('THERAPAY_ACCESS_TOKEN',token);else localStorage.removeItem('THERAPAY_ACCESS_TOKEN');}
+function forgetAccess(){sessionStorage.removeItem('THERAPAY_ACCESS_TOKEN');localStorage.removeItem('THERAPAY_ACCESS_TOKEN');}
 
 async function api(action, payload = {}) {
   if (demo) throw new Error('מצב הדגמה אינו מחובר לשרת.');
-  const token = sessionStorage.getItem('THERAPAY_ACCESS_TOKEN');
+  const token = accessToken();
   if (!apiUrl() || !token) { const error=new Error('יש להתחבר לקליניקה דרך ההגדרות.');error.code='AUTH';throw error; }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 65000);
@@ -50,13 +54,15 @@ async function load() {
     $('settings-result').textContent='';
     state.environment = data.environment;
     state.morningConfigured = data.morningConfigured;
+    state.emailDelivery = data.supportsEmailDelivery===true;
+    rememberAccess(accessToken(),localStorage.getItem('THERAPAY_REMEMBER')!=='false');
     if (!patient()) { state.patientId = state.patients[0]?.id || ''; resetSelection(); }
     state.selected = new Set(chosen().map(a => a.id));
     render();
     $('notice').hidden=true;
   } catch (error) {
     // A failed read is not a logout. Only an explicit authentication failure invalidates access.
-    if(error.code==='AUTH'){state.connected=false;sessionStorage.removeItem('THERAPAY_ACCESS_TOKEN');}
+    if(error.code==='AUTH'){state.connected=false;forgetAccess();}
     state.refreshFailed=state.loaded;
     $('settings-result').textContent=error.message;
     render();
@@ -156,7 +162,8 @@ function openDialog(name) {
   if (name === 'settings') {
     const form = $('settings-form');
     form.elements.url.value = apiUrl();
-    form.elements.accessToken.value = sessionStorage.getItem('THERAPAY_ACCESS_TOKEN') || '';
+    form.elements.accessToken.value = accessToken();
+    form.elements.rememberAccess.checked=localStorage.getItem('THERAPAY_REMEMBER')!=='false';
     form.elements.signature.value = localStorage.getItem('THERAPAY_SIGNATURE') || '';
     $('settings-result').textContent='';
     renderConnectionStatus();
@@ -181,7 +188,7 @@ function fillRate() { const f=$('appointment-form'); f.elements.amount.value = s
 function updateMessageLink() {
   $('whatsapp-link').href = `https://wa.me/${phoneForWhatsApp(patient()?.phone)}?text=${encodeURIComponent($('message-text').value)}`;
 }
-function showPayment() {
+async function showPayment() {
   if (!chosen().length) return;
   $('pay-form').reset();
   $('pay-form').elements.paymentDate.value = today();
@@ -189,7 +196,15 @@ function showPayment() {
   $('pay-summary').textContent = `${patient().name} · ${chosen().length} פגישות · ${money(total(chosen()))}`;
   $('pay-environment').textContent = demo ? 'הדגמה בלבד · לא יופק מסמך.' : state.environment === 'sandbox' ? 'סביבת בדיקות Morning · המסמך שיופק הוא מסמך בדיקה.' : 'Morning · הפקת מסמך בחשבון הפעיל.';
   $('pay-result').textContent=''; $('issue').disabled=false;
+  state.recipient=null;
+  $('pay-email').textContent='בודק את כתובת המייל הרשומה ב־Morning…';
+  $('issue').disabled=true;
   $('pay').showModal();
+  const lookup=++recipientLookup;
+  if(demo){$('pay-email').textContent='הדגמה · כתובת מייל תוצג כאן לפני ההפקה.';$('issue').disabled=false;return;}
+  if(!state.emailDelivery){$('pay-email').textContent='נדרש עדכון בקנד כדי להפיק ולשלוח למייל הרשום ב־Morning.';return;}
+  try{const data=await api('getMorningRecipient',{patientId:state.patientId});if(lookup!==recipientLookup)return;state.recipient=data.recipient;$('pay-email').textContent='החשבונית תישלח דרך Morning אל: '+data.recipient.emails.join(', ');$('issue').disabled=false;}
+  catch(error){if(lookup===recipientLookup)$('pay-email').textContent=error.message;}
 }
 
 document.addEventListener('click', event => {
@@ -213,11 +228,11 @@ $('payment').addEventListener('click',showPayment);
 $('settings-form').addEventListener('submit',async e=>{
   e.preventDefault(); const f=e.target; let u;
   try{u=new URL(f.elements.url.value.trim());if(u.protocol!=='https:'||u.hostname!=='script.google.com'||!/^\/macros\/s\/[\w-]+\/exec$/.test(u.pathname)||u.search)throw new Error();}catch{notice('יש להזין כתובת Web App שמסתיימת ב־/exec, מתוך Apps Script.',true);return;}
-  localStorage.setItem('APPS_SCRIPT_URL',u.href);localStorage.setItem('THERAPAY_SIGNATURE',f.elements.signature.value.trim());sessionStorage.setItem('THERAPAY_ACCESS_TOKEN',f.elements.accessToken.value.trim());
+  localStorage.setItem('APPS_SCRIPT_URL',u.href);localStorage.setItem('THERAPAY_SIGNATURE',f.elements.signature.value.trim());rememberAccess(f.elements.accessToken.value.trim(),f.elements.rememberAccess.checked);
   const b=f.querySelector('[type=submit]');b.disabled=true;try{await load();$('settings-result').textContent='החיבור הושלם והנתונים נטענו.';}catch(error){$('settings-result').textContent=error.message;}finally{b.disabled=false;}
 });
 $('refresh').addEventListener('click',async()=>{try{await load();$('settings-result').textContent='הנתונים עודכנו.';}catch(error){$('settings-result').textContent=error.message;}});
-$('disconnect').addEventListener('click',()=>{if(state.loading)return;sessionStorage.removeItem('THERAPAY_ACCESS_TOKEN');state.patients=[];state.appointments=[];state.patientId='';state.selected.clear();state.connected=false;state.loaded=false;state.refreshFailed=false;render();$('settings-result').textContent='התנתקת מהקליניקה.';});
+$('disconnect').addEventListener('click',()=>{if(state.loading)return;forgetAccess();state.patients=[];state.appointments=[];state.patientId='';state.selected.clear();state.connected=false;state.loaded=false;state.refreshFailed=false;render();$('settings-result').textContent='התנתקת מהקליניקה.';});
 for(const type of ['patient','appointment']) $(type+'-form').addEventListener('submit',async e=>{
   e.preventDefault();const f=e.target;const b=f.querySelector('[type=submit]');b.disabled=true;
   const values=Object.fromEntries(new FormData(f));
@@ -231,7 +246,9 @@ $('pay-form').addEventListener('submit',async e=>{
   e.preventDefault();if(state.busy||state.loading||!chosen().length)return;
   if(demo){$('pay-result').textContent='הדגמה בלבד · כאן תופק חשבונית מס־קבלה. לא בוצעה הנפקה.';return;}
   if(!state.morningConfigured){$('pay-result').textContent='מפתחות Morning טרם הוגדרו בבקנד.';return;}
+  if(!state.emailDelivery||!state.recipient){$('pay-result').textContent='יש לבדוק את כתובת המייל ב־Morning לפני ההפקה.';return;}
   const f=e.target;const payload={patientId:state.patientId,ids:chosen().map(a=>a.id).sort(),amount:total(chosen()),paymentMethod:f.elements.paymentMethod.value,paymentDate:f.elements.paymentDate.value};
+  payload.morningClientId=state.recipient.id;payload.recipientEmails=state.recipient.emails;
   const fingerprint=JSON.stringify(payload);
   if(attempt && attempt.fingerprint!==fingerprint){$('pay-result').textContent='קיימת בקשת הפקה קודמת שטרם אושרה. חזרו לאותה בחירה ולאותו תאריך ואמצעי תשלום, או בדקו את Morning ואת יומן הבקשות לפני איפוס ידני.';return;}
   if(!attempt){attempt={fingerprint,requestId:uuid()};sessionStorage.setItem('THERAPAY_ATTEMPT',JSON.stringify(attempt));}
@@ -240,6 +257,7 @@ $('pay-form').addEventListener('submit',async e=>{
     const result=await api('createMorningDoc',{...payload,requestId:attempt.requestId});
     attempt=null;sessionStorage.removeItem('THERAPAY_ATTEMPT');
     $('pay-result').replaceChildren(document.createTextNode('המסמך '+result.docNumber+' הופק והפגישות עודכנו.'));
+    if(result.emailRequested)$('pay-result').append(document.createTextNode(' המסמך נמסר ל־Morning עם בקשת שליחה אל '+result.recipientEmails.join(', ')+'.'));
     const url=safeLink(result.pdfUrl);if(url){const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=' צפייה במסמך ↗';$('pay-result').append(a);}
     state.appointments=applyIssuedDocument(state.appointments,payload.patientId,payload.ids,result);
     state.connected=true;
@@ -261,4 +279,4 @@ if(demo){
   state.patientId=state.patients[0].id;state.appointments=[['01',before+'-03',350],['02',before+'-10',350],['03',before+'-24',350],['04',m+'-01',350],['05',m+'-08',350]].map(([id,date,amount])=>({id:'APP-DEMO-'+id,patientId:state.patientId,clientName:'נועה לוי',date,amount,isPaid:false,docNumber:'',pdfUrl:''}));
   state.appointments.push({id:'APP-DEMO-06',patientId:'PAT-DEMO-2',clientName:'אורי גפן',date:before+'-15',amount:400,isPaid:false,docNumber:'',pdfUrl:''});
   resetSelection();render();
-}else{render();if(apiUrl()&&sessionStorage.getItem('THERAPAY_ACCESS_TOKEN'))load().catch(()=>{});}
+}else{render();if(apiUrl()&&accessToken())load().catch(()=>{});}
