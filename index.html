@@ -526,7 +526,7 @@
         </div>
     </div>
 
-    <!-- מודאל הוספת מטופל חדש -->
+    <!-- מודאלים -->
     <div class="modal" id="addPatientModal">
         <div class="modal-content">
             <div class="modal-title">👤 הוספת מטופל חדש</div>
@@ -538,14 +538,10 @@
         </div>
     </div>
 
-    <!-- מודאל קביעת פגישה חדשה -->
     <div class="modal" id="addAppointmentModal">
         <div class="modal-content">
             <div class="modal-title">📅 קביעת פגישה חדשה</div>
-            <div class="form-group">
-                <label>בחר מטופל</label>
-                <select id="newAppPatientSelect" onchange="autoFillAppAmount()"></select>
-            </div>
+            <div class="form-group"><label>בחר מטופל</label><select id="newAppPatientSelect" onchange="autoFillAppAmount()"></select></div>
             <div class="form-group"><label>תאריך הפגישה</label><input type="date" id="newAppDate"></div>
             <div class="form-group"><label>סכום (₪)</label><input type="number" id="newAppAmount" value="350"></div>
             <div class="form-group">
@@ -562,7 +558,6 @@
         </div>
     </div>
 
-    <!-- מודאלים נוספים -->
     <div class="modal" id="morningConfigModal">
         <div class="modal-content">
             <div class="modal-title">⚙️ הגדרת חיבור ל-Morning</div>
@@ -710,7 +705,19 @@
                             const name = a["שם"] || a["שם המטופל"] || a["שם מלא"] || a.clientName || "מטופל/ת";
                             const phone = a["טלפון"] || a.phone || getPatientPhoneByName(name);
                             const statusStr = String(a["סטטוס"] || a["סטטוס תשלום"] || a.status || "");
-                            const docNum = a["מספר מסמך"] || a["מסמך משפטי"] || a.docNumber || "";
+
+                            // סריקה גמישה של כל עמודות המסמכים/קבלה בגיליון
+                            let docNum = "";
+                            for (let key in a) {
+                                const kLower = key.toLowerCase();
+                                if (kLower.includes("קבלה") || kLower.includes("מסמך") || kLower.includes("חשבונית") || kLower.includes("מספר") || kLower.includes("doc")) {
+                                    if (a[key] && String(a[key]).trim() !== "" && String(a[key]).trim() !== "-") {
+                                        docNum = String(a[key]).trim();
+                                        break;
+                                    }
+                                }
+                            }
+
                             const isPaid = statusStr.indexOf("שולם") !== -1 || docNum !== "";
 
                             return {
@@ -834,7 +841,7 @@
             document.getElementById("payTotalDebt").innerText = `₪${totalDebt}`;
 
             tbody.innerHTML = list.map(p => {
-                const docText = p.docNumber ? 'חשבונית #' + p.docNumber : '-';
+                const docText = p.docNumber ? ('חשבונית #' + p.docNumber) : '-';
                 return `
                 <tr>
                     <td style="text-align:center;">
@@ -950,7 +957,7 @@
                             }
                         });
                         renderAll();
-                        setTimeout(fetchDataFromSheets, 1500); // טעינה מחדש של הנתונים מהגיליון שחזרו מעודכנים
+                        setTimeout(fetchDataFromSheets, 1500);
                     }
 
                     showToast(isDraft ? `✅ טיוטה הופקה ונפתחה!` : `🎉 חשבונית מס קבלה מס' ${result.docNumber} הונפקה ונשמרה ב-Google Sheets!`, "success");
@@ -965,7 +972,6 @@
             }
         }
 
-        // פתיחת טפסים פעילים
         function openPatientModal() {
             document.getElementById("newPatName").value = "";
             document.getElementById("newPatPhone").value = "";
