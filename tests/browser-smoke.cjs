@@ -7,7 +7,7 @@ const server=http.createServer((req,res)=>{const p=path.join(root,req.url.split(
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base='http://127.0.0.1:'+server.address().port;
  browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHANNEL?{channel:process.env.PLAYWRIGHT_CHANNEL}:{})});fs.mkdirSync(path.join(root,'test-output'),{recursive:true});
  const errors=[];const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,deviceScaleFactor:1});page.on('pageerror',e=>errors.push(e.message));
- await page.goto(base+'/?demo=1');await page.locator('#dashboard').waitFor();assert.equal(await page.locator('#stat-appointments').textContent(),'6');await page.locator('.bottom-nav [data-view=collection]').click();await page.locator('input[data-appointment]').first().waitFor();
+ await page.goto(base+'/?demo=1');await page.locator('#dashboard').waitFor();assert.equal(await page.locator('#stat-patients').textContent(),'2');await page.locator('.bottom-nav [data-view=collection]').click();await page.locator('input[data-appointment]').first().waitFor();
  assert.equal(await page.locator('input[data-appointment]:checked').count(),3);
  await page.locator('input[data-appointment]').nth(3).check();assert.ok((await page.locator('#selection-total').textContent()).includes('1,400'));
  await page.click('#whatsapp');assert.ok((await page.inputValue('#message-text')).includes('נועה לוי'));await page.locator('#message [data-close]').click();
