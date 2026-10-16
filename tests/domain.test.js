@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {defaultSelection,selectedAppointments,total,dashboardMetrics,phoneForWhatsApp,paymentMessage,today,validDate} from '../domain.js';
+import {defaultSelection,selectedAppointments,total,taskReminderDate,actionableTasks,dashboardMetrics,phoneForWhatsApp,paymentMessage,today,validDate} from '../domain.js';
 const apps=[{id:'old',patientId:'p1',date:'2026-09-15',amount:350,isPaid:false},{id:'now',patientId:'p1',date:'2026-10-01',amount:400,isPaid:false},{id:'paid',patientId:'p1',date:'2026-08-01',amount:350,isPaid:true},{id:'other',patientId:'p2',date:'2026-09-15',amount:350,isPaid:false},{id:'bad',patientId:'p1',date:'broken',amount:350,isPaid:false}];
 test('October selects only prior unpaid appointments for this patient',()=>assert.deepEqual([...defaultSelection(apps,'p1','2026-10')],['old']));
 test('selection cannot include another patient or paid appointments',()=>{const list=selectedAppointments(apps,new Set(['old','now','paid','other']),'p1');assert.equal(total(list),750);assert.equal(list.length,2);});
@@ -17,4 +17,13 @@ test('dashboard uses session months including paid and unpaid, with only prior u
 test('dashboard previous month handles January and an empty month',()=>{
   const m=dashboardMetrics([],[{patientId:'p1',date:'2026-12-15',amount:350,isPaid:true}],'2027-01-01');
   assert.equal(m.previous,'2026-12');assert.equal(m.previousIncome,350);assert.equal(m.currentForecast,0);assert.equal(m.debt,0);
+});
+
+test('tasks start on their reminder date, or due date without advance reminder',()=>{
+  const task={dueDate:'2026-10-20',remindDays:2,completed:false};
+  assert.equal(taskReminderDate(task),'2026-10-18');assert.equal(actionableTasks([task],'2026-10-17').length,0);assert.equal(actionableTasks([task],'2026-10-18').length,1);
+  assert.equal(actionableTasks([task],'2026-11-01').length,1);assert.equal(actionableTasks([{...task,completed:true}],'2026-11-01').length,0);
+  assert.equal(actionableTasks([{...task,remindDays:0}],'2026-10-19').length,0);assert.equal(actionableTasks([{...task,remindDays:0}],'2026-10-20').length,1);
+  assert.equal(actionableTasks([{...task,dueDate:''}],'2026-11-01').length,0);
+  assert.equal(taskReminderDate({...task,dueDate:'2027-01-01',remindDays:1}),'2026-12-31');
 });

@@ -73,3 +73,20 @@ test('appointment editing changes selected fields only and rejects stale, paid o
   assert.equal(f.sheets.Appointments.rows[1][7],'');assert.equal(f.call('updateAppointment',{...req,requestId:'stale-appointment-1234'}).success,false);
   for(const mode of ['ok','timeout']){const g=fixture();g.remoteMode=mode;g.call('createMorningDoc',g.req);assert.equal(g.call('updateAppointment',req).success,false);assert.equal(g.sheets.Appointments.rows[1][4],400);}
 });
+
+test('tasks are separate, retry safe, editable and completed without touching patients or appointments',()=>{
+  const f=fixture();assert.deepEqual(f.call('getTasks').tasks,[]);assert.equal(f.writes.length,0);
+  const req={requestId:'task-create-12345678',text:'לבדוק מסמכים',dueDate:'2026-10-20',remindDays:1,completed:false};
+  const first=f.call('saveTask',req);assert.equal(first.success,true);assert.equal(f.call('saveTask',req).task.id,first.task.id);assert.equal(f.call('getTasks').tasks.length,1);
+  const edit={...req,id:first.task.id,requestId:'task-update-12345678',expectedRevision:1,completed:true};
+  assert.equal(f.call('saveTask',edit).task.completed,true);assert.equal(f.call('saveTask',edit).task.revision,2);
+  assert.equal(f.call('saveTask',{...edit,requestId:'task-stale-123456789',completed:false}).code,'CONFLICT');
+  assert.ok(f.writes.every(w=>w.name==='TheraPayTasks'));assert.equal(f.documentCalls,0);assert.equal(f.call('getAllData').success,true);
+});
+test('invalid task data is rejected and damaged task sheet does not block clinic reads',()=>{
+  for(const change of [{text:'line1\nline2'},{text:''},{text:'x'.repeat(161)},{dueDate:'2026-02-30'},{remindDays:-1},{completed:'false'}]){
+    const f=fixture();assert.equal(f.call('saveTask',{requestId:'task-invalid-123456',text:'test',dueDate:'',remindDays:0,completed:false,...change}).success,false);assert.equal(f.writes.length,0);
+  }
+  const f=fixture();f.call('saveTask',{requestId:'task-valid-12345678',text:'test',dueDate:'',remindDays:0,completed:false});f.sheets.TheraPayTasks.rows[0][0]='broken';
+  assert.equal(f.call('getTasks').success,false);assert.equal(f.call('getAllData').success,true);
+});

@@ -21,6 +21,8 @@ function doPost(e) {
     else if(req.action==='addAppointment')result=addAppointment_(req);
     else if(req.action==='updatePatient')result=updatePatient_(req);
     else if(req.action==='updateAppointment')result=updateAppointment_(req);
+    else if(req.action==='getTasks')result={success:true,tasks:tasks_().list.map(taskPublic_)};
+    else if(req.action==='saveTask')result=saveTask_(req);
     else if(req.action==='createMorningDoc'||req.action==='createMorningDocument')result=issueDocument_(req);
     else fail_('פעולה לא מוכרת');
     return json_(result);
@@ -57,7 +59,7 @@ function appointments_(patients){
   });unique_(list,'פגישות');return {table:t,list:list};
 }
 function environment_(){var env=PropertiesService.getScriptProperties().getProperty('MORNING_ENV')||'sandbox';if(env!=='sandbox'&&env!=='production')fail_('MORNING_ENV חייב להיות sandbox או production.');return env;}
-function readData_(){var p=patients_();var a=appointments_(p).list;var props=PropertiesService.getScriptProperties();return {success:true,supportsEditing:true,supportsEmailDelivery:true,patients:p,appointments:a.map(function(x){var copy=Object.assign({},x);delete copy._row;return copy;}),environment:environment_(),morningConfigured:!!(props.getProperty('MORNING_API_KEY')&&props.getProperty('MORNING_API_SECRET'))};}
+function readData_(){var p=patients_();var a=appointments_(p).list;var props=PropertiesService.getScriptProperties();return {success:true,supportsTasks:true,supportsEditing:true,supportsEmailDelivery:true,patients:p,appointments:a.map(function(x){var copy=Object.assign({},x);delete copy._row;return copy;}),environment:environment_(),morningConfigured:!!(props.getProperty('MORNING_API_KEY')&&props.getProperty('MORNING_API_SECRET'))};}
 function literal_(value){var s=text_(value);return /^[=+@\-]/.test(s)?"'"+s:s;}
 function append_(t,obj){var row=t.headers.map(function(){return '';});Object.keys(obj).forEach(function(key){if(t.cols[key]>=0)row[t.cols[key]]=obj[key];});t.sheet.appendRow(row);SpreadsheetApp.flush();}
 function ensurePatientIdColumn_(t){if(t.cols.patientId<0){t.cols.patientId=t.headers.length;t.headers.push('מזהה מטופל');t.sheet.getRange(1,t.headers.length).setValue('מזהה מטופל');}}
@@ -215,3 +217,31 @@ function morningToken_(env){
 }
 /** Run once in the editor, then copy APP_ACCESS_TOKEN from Script Properties into the app. */
 function setupAccessCode(){var props=PropertiesService.getScriptProperties();if(!props.getProperty('APP_ACCESS_TOKEN'))props.setProperty('APP_ACCESS_TOKEN',Utilities.getUuid()+Utilities.getUuid());if(!props.getProperty('MORNING_ENV'))props.setProperty('MORNING_ENV','sandbox');}
+
+
+// Tasks use their own sheet and API; task failures do not block clinic data reads.
+var TASK_HEADERS=['id','text','due_date','remind_days','completed','revision','last_request_id'];
+function tasks_(){
+  var sheet=spreadsheet_().getSheetByName('TheraPayTasks');if(!sheet)return {sheet:null,list:[]};
+  var values=sheet.getDataRange().getValues();
+  if(TASK_HEADERS.some(function(h,i){return values[0][i]!==h;}))fail_('כותרות גיליון המשימות אינן תקינות.');
+  var list=values.slice(1).map(function(r,i){return {id:text_(r[0]),text:text_(r[1]),dueDate:r[2]?date_(r[2]):'',remindDays:Number(r[3]),completed:r[4]===true||r[4]==='true',revision:Number(r[5]),_request:text_(r[6]),_row:i+2};}).filter(function(t){return t.id;});
+  unique_(list,'משימות');return {sheet:sheet,list:list};
+}
+function saveTask_(req){
+  var content=text_(req.text),due=text_(req.dueDate),lead=Number(req.remindDays);
+  if(!content||content.length>160||/[\r\n]/.test(content))fail_('יש להזין תוכן משימה בשורה אחת, עד 160 תווים.');
+  if(due&&!validDate_(due))fail_('תאריך היעד אינו תקין.');
+  if([0,1,2,7].indexOf(lead)<0||typeof req.completed!=='boolean')fail_('פרטי המשימה אינם תקינים.');
+  if(!/^[a-zA-Z0-9-]{16,100}$/.test(req.requestId||''))fail_('מזהה בקשה לא תקין.');
+  var t=tasks_(),id=req.id||'TASK-'+req.requestId,old=t.list.filter(function(x){return x.id===id;})[0];
+  var same=old&&old.text===content&&old.dueDate===due&&old.remindDays===lead&&old.completed===req.completed;
+  if(old&&old._request===req.requestId){if(!same)fail_('מזהה הבקשה שימש למשימה אחרת.');return {success:true,task:taskPublic_(old)};}
+  if(req.id&&!old)fail_('המשימה לא נמצאה.');
+  if(old&&(!req.id||old.revision!==req.expectedRevision))fail_('המשימה השתנתה. רעננו את המשימות לפני שמירה.','CONFLICT');
+  if(!t.sheet){t.sheet=spreadsheet_().insertSheet('TheraPayTasks');t.sheet.appendRow(TASK_HEADERS);}
+  var revision=old?old.revision+1:1,row=[id,literal_(content),due,lead,req.completed,revision,req.requestId];
+  if(old)t.sheet.getRange(old._row,1,1,7).setValues([row]);else t.sheet.appendRow(row);SpreadsheetApp.flush();
+  return {success:true,task:{id:id,text:content,dueDate:due,remindDays:lead,completed:req.completed,revision:revision}};
+}
+function taskPublic_(task){return {id:task.id,text:task.text,dueDate:task.dueDate,remindDays:task.remindDays,completed:task.completed,revision:task.revision};}

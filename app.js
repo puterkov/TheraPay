@@ -1,9 +1,9 @@
-import { today, money, dashboardMetrics, validDate, defaultSelection, selectedAppointments, total, phoneForWhatsApp, displayDate, paymentMessage, applyIssuedDocument } from './domain.js?v=dashboard-20261016';
+import { today, money, taskReminderDate, actionableTasks, dashboardMetrics, validDate, defaultSelection, selectedAppointments, total, phoneForWhatsApp, displayDate, paymentMessage, applyIssuedDocument } from './domain.js?v=tasks-20261016';
 
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const demo = new URLSearchParams(location.search).get('demo') === '1';
-const state = { patients:[], appointments:[], patientId:'', month:today().slice(0,7), appointmentsPatient:'ALL', appointmentsMonth:'ALL', documentsPatient:'ALL', documentsMonth:'ALL', selected:new Set(), view:'dashboard', connected:false, loaded:false, loading:false, refreshFailed:false, environment:'sandbox', morningConfigured:false, emailDelivery:false, recipient:null, editing:{}, supportsEditing:false, busy:false };
+const state = { patients:[], appointments:[], tasks:[], supportsTasks:false, tasksError:'', taskEdit:null, patientId:'', month:today().slice(0,7), appointmentsPatient:'ALL', appointmentsMonth:'ALL', documentsPatient:'ALL', documentsMonth:'ALL', selected:new Set(), view:'dashboard', connected:false, loaded:false, loading:false, refreshFailed:false, environment:'sandbox', morningConfigured:false, emailDelivery:false, recipient:null, editing:{}, supportsEditing:false, busy:false };
 let recipientLookup=0;
 let attempt = readAttempt();
 function readAttempt() { try { return JSON.parse(sessionStorage.getItem('THERAPAY_ATTEMPT') || 'null'); } catch { return null; } }
@@ -47,7 +47,7 @@ async function load() {
     const data = await api('getAllData');
     if (!Array.isArray(data.patients) || !Array.isArray(data.appointments)) throw new Error('מבנה הנתונים מהשרת אינו תקין.');
     state.patients = data.patients;
-    state.appointments = data.appointments;
+    state.appointments = data.appointments;state.supportsTasks=data.supportsTasks===true;
     state.connected = true;
     state.loaded = true;
     state.refreshFailed = false;
@@ -60,6 +60,7 @@ async function load() {
     state.selected = new Set(chosen().map(a => a.id));
     render();
     $('notice').hidden=true;
+    if(state.supportsTasks)await loadTasks();
   } catch (error) {
     // A failed read is not a logout. Only an explicit authentication failure invalidates access.
     if(error.code==='AUTH'){state.connected=false;forgetAccess();}
@@ -68,7 +69,7 @@ async function load() {
     render();
     notice(state.loaded && error.code!=='AUTH' ? 'רענון הנתונים לא הושלם. מוצגים הנתונים האחרונים; אפשר לנסות שוב דרך ההגדרות.' : error.message,true);
     throw error;
-  } finally {state.loading=false;$('refresh').disabled=false;renderConnectionStatus();updateSelection();}
+  } finally {state.loading=false;$('refresh').disabled=false;renderConnectionStatus();updateSelection();renderTasks();}
 }
 
 function resetSelection() { state.selected = defaultSelection(state.appointments, state.patientId, state.month); }
@@ -131,6 +132,7 @@ function render() {
   $('patient-list').innerHTML = state.patients.length?`<div class="session-table-wrap"><table class="session-table patients-table"><caption class="sr-only">מטופלים · פרטי קשר ותעריף לפגישה</caption><thead><tr><th scope="col">מטופל</th><th scope="col">טלפון</th><th scope="col">תעריף</th><th scope="col">עריכה</th></tr></thead><tbody>${state.patients.map(p=>`<tr><td class="name-cell">${esc(p.name)}<small class="patient-status">${esc(p.status)}</small></td><td class="patient-phone"><span dir="ltr">${esc(p.phone||'—')}</span></td><td class="amount-cell">${esc(money(p.rate))}</td><td class="patient-edit-cell"><button class="quiet patient-edit" data-edit-patient="${esc(p.id)}" aria-label="עריכת ${esc(p.name)}"><span aria-hidden="true">✎</span><span class="edit-label">עריכה</span></button></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">טרם נוספו מטופלים.</div>';
   renderAppointments();
   renderDocuments();
+  renderTasks();
   view(state.view);
 }
 
@@ -249,6 +251,7 @@ async function showPayment() {
 document.addEventListener('click', event => {
   const editPatient=event.target.closest('[data-edit-patient]');if(editPatient)editRecord('patient',editPatient.dataset.editPatient);
   const editAppointment=event.target.closest('[data-edit-appointment]');if(editAppointment)editRecord('appointment',editAppointment.dataset.editAppointment);
+  const editTask=event.target.closest('[data-edit-task]');if(editTask)openTask(editTask.dataset.editTask);
   const open=event.target.closest('[data-open]'); if(open) openDialog(open.dataset.open);
   const close=event.target.closest('[data-close]'); if(close && !state.busy) close.closest('dialog').close();
   const monthTile=event.target.closest('[data-dashboard-month]');if(monthTile&&!state.busy){const metrics=dashboardMetrics(state.patients,state.appointments);state.appointmentsMonth=metrics[monthTile.dataset.dashboardMonth];state.appointmentsPatient='ALL';renderAppointments();view('appointments');}
@@ -276,7 +279,7 @@ $('settings-form').addEventListener('submit',async e=>{
   const b=f.querySelector('[type=submit]');b.disabled=true;try{await load();view('dashboard');}catch(error){$('settings-result').textContent=error.message;}finally{b.disabled=false;}
 });
 $('refresh').addEventListener('click',async()=>{try{await load();$('settings-result').textContent='הנתונים עודכנו.';}catch(error){$('settings-result').textContent=error.message;}});
-$('disconnect').addEventListener('click',()=>{if(state.loading)return;forgetAccess();state.patients=[];state.appointments=[];state.patientId='';state.selected.clear();state.connected=false;state.loaded=false;state.refreshFailed=false;render();$('settings-result').textContent='התנתקת מהקליניקה.';});
+$('disconnect').addEventListener('click',()=>{if(state.loading)return;forgetAccess();state.patients=[];state.appointments=[];state.tasks=[];state.supportsTasks=false;state.tasksError='';state.patientId='';state.selected.clear();state.connected=false;state.loaded=false;state.refreshFailed=false;render();$('settings-result').textContent='התנתקת מהקליניקה.';});
 for(const type of ['patient','appointment']) $(type+'-form').addEventListener('submit',async e=>{
   e.preventDefault();if(state.busy)return;if(demo){notice('הדגמה בלבד · השינויים לא נשמרו.');$(type).close();return;}
   const f=e.target,b=f.querySelector('[type=submit]'),original=b.innerHTML,editing=state.editing[type];
@@ -293,6 +296,66 @@ for(const type of ['patient','appointment']) $(type+'-form').addEventListener('s
   }catch(error){formStatus=document.createElement('p');formStatus.setAttribute('role','status');formStatus.textContent=error.message;f.append(formStatus);}
   finally{state.busy=false;b.disabled=false;b.innerHTML=original;f.removeAttribute('aria-busy');}
 });
+async function loadTasks(){
+  try{const data=await api('getTasks');if(!Array.isArray(data.tasks))throw new Error('לא ניתן לקרוא את המשימות.');state.tasks=data.tasks;state.tasksError='';}
+  catch(error){state.tasksError='רענון המשימות לא הושלם. אפשר לנסות שוב.';}
+  renderTasks();
+}
+function renderTasks(){
+  const available=demo||(state.connected&&state.supportsTasks);
+  const due=available?actionableTasks(state.tasks):[];
+  $('tasks-alert').hidden=!due.length;
+  $('tasks-alert').textContent='✓ משימות לטיפול · '+due.length;
+  $('tasks-status').textContent=state.tasksError||(!available?'יש לעדכן את Apps Script ולרענן נתונים בהגדרות להפעלת משימות.':demo?'הדגמה · שינויים במשימות אינם נשמרים.':'');
+  const row=t=>`<article class="task-row ${t.completed?'task-completed':''}"><label class="task-check"><input type="checkbox" data-task-toggle="${esc(t.id)}" ${t.completed?'checked':''} aria-label="${t.completed?'פתיחה מחדש':'השלמת משימה'}: ${esc(t.text)}" ${state.busy||state.loading?'disabled':''}></label><div class="task-content"><div class="task-text" title="${esc(t.text)}">${esc(t.text)}</div><small>${t.dueDate?esc(displayDate(t.dueDate)):'ללא תאריך יעד'}${!t.completed&&due.some(x=>x.id===t.id)?' · לטיפול':''}</small></div><button class="quiet task-edit" data-edit-task="${esc(t.id)}" aria-label="עריכת משימה: ${esc(t.text)}">✎</button></article>`;
+  const list=available?[...state.tasks].sort((a,b)=>(a.dueDate||'9999').localeCompare(b.dueDate||'9999')):[];
+  $('task-list').innerHTML=list.filter(t=>!t.completed).map(row).join('')||'<div class="empty">אין משימות פתוחות.</div>';
+  const done=list.filter(t=>t.completed);$('completed-tasks').hidden=!done.length;$('task-done-list').innerHTML=done.map(row).join('');
+  $('new-task').disabled=!available||state.busy||state.loading;
+}
+function taskPreview(){
+  const f=$('task-form');f.elements.remindDays.disabled=!f.elements.dueDate.value;
+  const date=taskReminderDate({dueDate:f.elements.dueDate.value,remindDays:f.elements.remindDays.value});
+  $('task-reminder-preview').textContent=date?'סימון בדשבורד החל מ־'+displayDate(date)+' ועד להשלמת המשימה.':'ללא תאריך יעד · המשימה תופיע ברשימה בלבד.';
+}
+function openTask(id=''){
+  if(state.busy||state.loading||(!demo&&!state.supportsTasks))return;
+  const task=state.tasks.find(t=>t.id===id);state.taskEdit=task?{...task}:null;
+  const f=$('task-form');f.reset();delete f.dataset.requestId;delete f.dataset.fingerprint;
+  f.elements.text.value=task?.text||'';f.elements.dueDate.value=task?.dueDate||'';f.elements.remindDays.value=String(task?.remindDays??1);
+  $('task-title').textContent=task?'עריכת משימה':'משימה חדשה';$('task-result').textContent='';taskPreview();$('task-editor').showModal();
+}
+async function saveTask(values,requestId){
+  if(demo)return {...values,id:values.id||'TASK-'+requestId,revision:(values.expectedRevision||0)+1};
+  const result=await api('saveTask',{...values,requestId});return result.task;
+}
+function acceptTask(task){state.tasksError='';const i=state.tasks.findIndex(t=>t.id===task.id);if(i<0)state.tasks.push(task);else state.tasks[i]=task;renderTasks();}
+$('new-task').addEventListener('click',()=>openTask());
+$('task-form').elements.dueDate.addEventListener('change',taskPreview);
+$('task-form').elements.remindDays.addEventListener('change',taskPreview);
+$('task-form').addEventListener('submit',async e=>{
+  e.preventDefault();if(state.busy||state.loading)return;const f=e.target,old=state.taskEdit;
+  const values={text:f.elements.text.value.trim(),dueDate:f.elements.dueDate.value,remindDays:Number(f.elements.remindDays.value),completed:old?.completed||false};
+  if(old){values.id=old.id;values.expectedRevision=old.revision;}
+  const fingerprint=JSON.stringify(values);if(f.dataset.fingerprint!==fingerprint){f.dataset.requestId=uuid();f.dataset.fingerprint=fingerprint;}
+  const button=f.querySelector('[type=submit]');state.busy=true;button.disabled=true;button.innerHTML='<span class="spinner" aria-hidden="true"></span>שומר…';$('task-result').textContent='';
+  try{acceptTask(await saveTask(values,f.dataset.requestId));$('task-editor').close();}catch(error){$('task-result').textContent=error.message;}
+  finally{state.busy=false;button.disabled=false;button.textContent='שמור משימה';renderTasks();}
+});
+async function toggleTask(id,completed){
+  if(state.busy||state.loading)return;const task=state.tasks.find(t=>t.id===id);if(!task)return;
+  state.busy=true;renderTasks();
+  const values={id:task.id,text:task.text,dueDate:task.dueDate,remindDays:task.remindDays,completed,expectedRevision:task.revision};
+  // Keep a completion retry's ID when a response is lost.
+  const fingerprint=JSON.stringify(values);if(task._pending?.fingerprint!==fingerprint)task._pending={fingerprint,id:uuid()};
+  try{acceptTask(await saveTask(values,task._pending.id));state.tasksError='';}
+  catch(error){state.tasksError=error.message;}
+  finally{state.busy=false;renderTasks();}
+}
+for(const id of ['task-list','task-done-list'])$(id).addEventListener('change',e=>{if(e.target.dataset.taskToggle)toggleTask(e.target.dataset.taskToggle,e.target.checked);});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')renderTasks();});
+if(typeof window.setInterval==='function')window.setInterval(()=>{if(!document.hidden)renderTasks();},60000);
+
 $('pay-form').addEventListener('submit',async e=>{
   e.preventDefault();if(state.busy||state.loading||!chosen().length)return;
   if(demo){$('pay-result').textContent='הדגמה בלבד · כאן תופק חשבונית מס־קבלה. לא בוצעה הנפקה.';return;}
@@ -329,5 +392,6 @@ if(demo){
   state.patientId=state.patients[0].id;state.appointments=[['01',before+'-03',350],['02',before+'-10',350],['03',before+'-24',350],['04',m+'-01',350],['05',m+'-08',350]].map(([id,date,amount])=>({id:'APP-DEMO-'+id,patientId:state.patientId,clientName:'נועה לוי',date,amount,isPaid:false,docNumber:'',pdfUrl:''}));
   Object.assign(state.appointments[4],{isPaid:true,docNumber:'DEMO-1002'});
   state.appointments.push({id:'APP-DEMO-06',patientId:'PAT-DEMO-2',clientName:'אורי גפן',date:before+'-15',amount:400,isPaid:true,docNumber:'DEMO-1001',pdfUrl:''});
+  state.tasks=[{id:'TASK-DEMO-1',text:'להכין סיכום חודשי',dueDate:today(),remindDays:0,completed:false,revision:1},{id:'TASK-DEMO-2',text:'לעדכן את פרטי הקליניקה',dueDate:'',remindDays:1,completed:false,revision:1}];
   resetSelection();render();
 }else{render();if(apiUrl()&&accessToken())load().catch(()=>{});}

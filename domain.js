@@ -8,6 +8,15 @@ export function validDate(value) {
   const d = new Date(value + 'T12:00:00Z');
   return !isNaN(d) && d.toISOString().slice(0,10) === value;
 }
+export function taskReminderDate(task){
+  if(!validDate(task.dueDate))return '';
+  const d=new Date(task.dueDate+'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate()-Number(task.remindDays||0));
+  return d.toISOString().slice(0,10);
+}
+export function actionableTasks(tasks,date=today()){
+  return tasks.filter(t=>!t.completed&&taskReminderDate(t)&&taskReminderDate(t)<=date);
+}
 export function defaultSelection(appointments, patientId, month) {
   return new Set(appointments.filter(a => a.patientId === patientId && !a.isPaid && validDate(a.date) && a.date < month + '-01').map(a => a.id));
 }

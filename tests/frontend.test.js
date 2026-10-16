@@ -15,11 +15,11 @@ function fixture(){
     querySelector(selector){if(selector==='[role=status]')return null;if(selector==='[type=submit]')return this.submitButton??=new Element();return new Element();}
   }
   const elements=Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(m=>[m[1],new Element()]));
-  for(const id of ['appointment-form','pay-form','settings-form','patient-form'])for(const key of ['patientId','paymentDate','paymentMethod','amount','url','accessToken','signature','rememberAccess','date','name','phone','rate','status'])elements[id].elements[key]=new Element();
+  for(const id of ['appointment-form','pay-form','settings-form','patient-form','task-form'])for(const key of ['patientId','paymentDate','paymentMethod','amount','url','accessToken','signature','rememberAccess','date','name','phone','rate','status','text','dueDate','remindDays'])elements[id].elements[key]=new Element();
   const storage=()=>{const map=new Map();return {getItem:k=>map.get(k)||null,setItem:(k,v)=>map.set(k,v),removeItem:k=>map.delete(k)};};
   const sessionStorage=storage();const localStorage=storage();const queue=[];const calls=[];
-  const context={...domain,console,URL,URLSearchParams,AbortController,Intl,Date,crypto,setTimeout,clearTimeout,sessionStorage,localStorage,location:{search:''},window:{scrollTo(){}},FormData:class{constructor(form){this.form=form;}*[Symbol.iterator](){const keys=this.form===elements['patient-form']?['name','phone','rate','status']:['patientId','date','amount'];for(const key of keys)yield [key,this.form.elements[key].value];}},
-    document:{getElementById:id=>{if(!elements[id])throw Error('Missing element '+id);return elements[id];},addEventListener(){},querySelectorAll:selector=>selector==='dialog'?['patient','appointment','message','pay','appointment-details'].map(id=>elements[id]):selector==='.view'?['dashboard','patients','appointments','collection','documents','settings'].map(id=>Object.assign(elements[id],{id})):[],createTextNode:text=>({textContent:text}),createElement:()=>new Element()},
+  const context={...domain,console,URL,URLSearchParams,AbortController,Intl,Date,crypto,setTimeout,clearTimeout,sessionStorage,localStorage,location:{search:''},window:{scrollTo(){}},FormData:class{constructor(form){this.form=form;}*[Symbol.iterator](){const keys=this.form===elements['patient-form']?['name','phone','rate','status','text','dueDate','remindDays']:['patientId','date','amount'];for(const key of keys)yield [key,this.form.elements[key].value];}},
+    document:{getElementById:id=>{if(!elements[id])throw Error('Missing element '+id);return elements[id];},addEventListener(){},querySelectorAll:selector=>selector==='dialog'?['patient','appointment','message','pay','appointment-details'].map(id=>elements[id]):selector==='.view'?['dashboard','patients','appointments','collection','documents','settings','tasks'].map(id=>Object.assign(elements[id],{id})):[],createTextNode:text=>({textContent:text}),createElement:()=>new Element()},
     fetch:async(url,options)=>{calls.push(JSON.parse(options.body));const result=await queue.shift();if(result instanceof Error)throw result;if(!result)throw Error('Unexpected request');return {ok:true,json:async()=>result};}
   };
   vm.createContext(context);vm.runInContext(source,context);sessionStorage.setItem('THERAPAY_ACCESS_TOKEN','fixture-access');
@@ -137,4 +137,30 @@ test('collection hides paid appointments and defaults to prior unpaid months onl
   assert.match(rows,/data-appointment="a1"[^>]*checked/);assert.ok(!/data-appointment="a3"[^>]*checked/.test(rows));
   assert.equal(f.run('state.selected.has("a1")'),true);assert.equal(f.run('state.selected.has("a3")'),false);
   f.data.appointments.forEach(a=>a.isPaid=true);f.queue.push(structuredClone(f.data));await f.run('load()');assert.match(f.elements['appointment-groups'].innerHTML,/אין פגישות לתשלום/);
+});
+
+test('task alerts appear only from the reminder date and disappear after completion',async()=>{
+  const f=fixture();await f.connect();f.run('state.supportsTasks=true;state.tasks=[{id:"t1",text:"private task",dueDate:today(),remindDays:0,completed:false,revision:1}];renderTasks()');
+  assert.equal(f.elements['tasks-alert'].hidden,false);assert.ok(!f.elements['tasks-alert'].textContent.includes('private task'));
+  f.run('state.tasks[0].completed=true;renderTasks()');assert.equal(f.elements['tasks-alert'].hidden,true);
+  f.run('state.tasks[0].completed=false;state.tasks[0].dueDate="2099-01-01";renderTasks()');assert.equal(f.elements['tasks-alert'].hidden,true);
+  f.run('state.tasks[0].dueDate="";renderTasks()');assert.equal(f.elements['tasks-alert'].hidden,true);
+});
+test('task API failure does not break the clinic connection or its loaded appointments',async()=>{
+  const f=fixture();f.data.supportsTasks=true;f.queue.push(structuredClone(f.data),new TypeError('tasks unavailable'));await f.run('load()');
+  assert.equal(f.run('state.connected'),true);assert.equal(f.run('state.appointments.length'),2);assert.match(f.elements['tasks-status'].textContent,/רענון המשימות/);
+});
+test('task completion persists once and clears the dashboard marker',async()=>{
+  const f=fixture();await f.connect();f.run('state.supportsTasks=true;state.tasks=[{id:"t1",text:"test",dueDate:today(),remindDays:0,completed:false,revision:1}];renderTasks()');
+  f.queue.push({success:true,apiVersion:2,task:{id:'t1',text:'test',dueDate:domain.today(),remindDays:0,completed:true,revision:2}});
+  await f.run('toggleTask("t1",true)');assert.equal(f.elements['tasks-alert'].hidden,true);assert.equal(f.run('state.tasks[0].completed'),true);assert.equal(f.calls.at(-1).expectedRevision,1);
+});
+
+test('task form preserves its request ID on retry and saves content with its chosen reminder',async()=>{
+  const f=fixture();await f.connect();f.run('state.supportsTasks=true;openTask()');const form=f.elements['task-form'];
+  form.elements.text.value='תזכורת קצרה';form.elements.dueDate.value='2026-10-20';form.elements.remindDays.value='0';
+  f.queue.push(new TypeError('lost response'));await form.listeners.submit({preventDefault(){},target:form});
+  const id=f.calls.at(-1).requestId;assert.ok(f.elements['task-result'].textContent);
+  f.queue.push({success:true,apiVersion:2,task:{id:'TASK-1',text:'תזכורת קצרה',dueDate:'2026-10-20',remindDays:0,completed:false,revision:1}});
+  await form.listeners.submit({preventDefault(){},target:form});assert.equal(f.calls.at(-1).requestId,id);assert.equal(f.calls.at(-1).remindDays,0);assert.equal(f.run('state.tasks.length'),1);
 });
