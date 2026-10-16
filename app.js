@@ -144,7 +144,6 @@ function renderDashboard() {
   $('stat-current').textContent=money(metrics.currentForecast);
   $('stat-current-month').textContent=monthName(metrics.current);
   $('stat-debt').textContent=money(metrics.debt);
-  $('stat-debt-patients').textContent=(metrics.debtPatients===1?'מטופל אחד':metrics.debtPatients+' מטופלים')+' · מחודשים קודמים';
 }
 
 function renderAppointments(){
