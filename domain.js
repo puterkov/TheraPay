@@ -10,8 +10,10 @@ export function validDate(value) {
 }
 export function taskReminderDate(task){
   if(!validDate(task.dueDate))return '';
+  const days=Number(task.remindDays||0);
+  if(![0,1,2,7].includes(days))return '';
   const d=new Date(task.dueDate+'T12:00:00Z');
-  d.setUTCDate(d.getUTCDate()-Number(task.remindDays||0));
+  d.setUTCDate(d.getUTCDate()-days);
   return d.toISOString().slice(0,10);
 }
 export function actionableTasks(tasks,date=today()){
