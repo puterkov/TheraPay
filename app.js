@@ -1,4 +1,4 @@
-import { today, money, validDate, defaultSelection, selectedAppointments, total, phoneForWhatsApp, displayDate, paymentMessage, applyIssuedDocument } from './domain.js';
+import { today, money, dashboardMetrics, validDate, defaultSelection, selectedAppointments, total, phoneForWhatsApp, displayDate, paymentMessage, applyIssuedDocument } from './domain.js?v=dashboard-20261016';
 
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -136,10 +136,15 @@ function render() {
 
 function renderDashboard() {
   $('dashboard-date').textContent = new Intl.DateTimeFormat('he-IL',{dateStyle:'full',timeZone:'Asia/Jerusalem'}).format(new Date());
-  $('stat-patients').textContent = state.patients.length;
-  $('stat-appointments').textContent = state.appointments.length;
-  $('stat-paid').textContent = money(total(state.appointments.filter(a=>a.isPaid)));
-  $('stat-debt').textContent = money(total(state.appointments.filter(a=>!a.isPaid)));
+  const metrics=dashboardMetrics(state.patients,state.appointments);
+  const monthName=m=>new Intl.DateTimeFormat('he-IL',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(m+'-01'));
+  $('stat-patients').textContent=metrics.activePatients;
+  $('stat-previous').textContent=money(metrics.previousIncome);
+  $('stat-previous-month').textContent=monthName(metrics.previous);
+  $('stat-current').textContent=money(metrics.currentForecast);
+  $('stat-current-month').textContent=monthName(metrics.current);
+  $('stat-debt').textContent=money(metrics.debt);
+  $('stat-debt-patients').textContent=(metrics.debtPatients===1?'מטופל אחד':metrics.debtPatients+' מטופלים')+' · מחודשים קודמים';
 }
 
 function renderAppointments(){
@@ -147,7 +152,8 @@ function renderAppointments(){
   if(!state.patients.some(p=>p.id===state.appointmentsPatient))state.appointmentsPatient='ALL';
   patients.innerHTML='<option value="ALL">כל המטופלים</option>'+state.patients.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
   patients.value=state.appointmentsPatient;
-  const availableMonths=[...new Set(state.appointments.filter(a=>validDate(a.date)).map(a=>a.date.slice(0,7)))].sort().reverse();
+  const calendar=dashboardMetrics(state.patients,state.appointments);
+  const availableMonths=[...new Set([calendar.previous,calendar.current,...state.appointments.filter(a=>validDate(a.date)).map(a=>a.date.slice(0,7))])].sort().reverse();
   if(!availableMonths.includes(state.appointmentsMonth))state.appointmentsMonth='ALL';
   months.innerHTML='<option value="ALL">כל החודשים</option>'+availableMonths.map(m=>`<option value="${m}">${esc(new Intl.DateTimeFormat('he-IL',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(m+'-01')))}</option>`).join('');
   months.value=state.appointmentsMonth;
@@ -246,6 +252,7 @@ document.addEventListener('click', event => {
   const editAppointment=event.target.closest('[data-edit-appointment]');if(editAppointment)editRecord('appointment',editAppointment.dataset.editAppointment);
   const open=event.target.closest('[data-open]'); if(open) openDialog(open.dataset.open);
   const close=event.target.closest('[data-close]'); if(close && !state.busy) close.closest('dialog').close();
+  const monthTile=event.target.closest('[data-dashboard-month]');if(monthTile&&!state.busy){const metrics=dashboardMetrics(state.patients,state.appointments);state.appointmentsMonth=metrics[monthTile.dataset.dashboardMonth];state.appointmentsPatient='ALL';renderAppointments();view('appointments');}
   const tab=event.target.closest('[data-view]'); if(tab && !state.busy) view(tab.dataset.view);
   const person=event.target.closest('[data-patient]'); if(person) {state.patientId=person.dataset.patient;resetSelection();renderCollection();view('collection');}
   const detail=event.target.closest('[data-detail]');if(detail&&!event.target.closest('.cell-pick')&&!state.busy)showAppointmentDetails(detail.dataset.detail);

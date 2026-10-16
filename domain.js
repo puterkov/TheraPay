@@ -15,6 +15,16 @@ export function selectedAppointments(appointments, ids, patientId) {
   return appointments.filter(a => ids.has(a.id) && a.patientId === patientId && !a.isPaid);
 }
 export function total(appointments) { return appointments.reduce((sum,a) => sum + Math.round(a.amount * 100),0) / 100; }
+export function dashboardMetrics(patients,appointments,date=today()) {
+  const current=date.slice(0,7);
+  const previous=new Date(Date.UTC(Number(current.slice(0,4)),Number(current.slice(5))-2,1)).toISOString().slice(0,7);
+  const dated=appointments.filter(a=>validDate(a.date));
+  const debts=dated.filter(a=>!a.isPaid&&a.date<current+'-01');
+  return {current,previous,activePatients:patients.filter(p=>p.status==='פעיל').length,
+    previousIncome:total(dated.filter(a=>a.date.slice(0,7)===previous)),
+    currentForecast:total(dated.filter(a=>a.date.slice(0,7)===current)),
+    debt:total(debts),debtPatients:new Set(debts.map(a=>a.patientId)).size};
+}
 export function applyIssuedDocument(appointments,patientId,ids,result) {
   const selected=new Set(ids);
   return appointments.map(a=>a.patientId===patientId && selected.has(a.id)?{...a,isPaid:true,docNumber:String(result.docNumber),pdfUrl:result.pdfUrl||'',paymentMethod:result.paymentLabel||a.paymentMethod,morningStatus:result.environment==='sandbox'?'issued_sandbox':'issued'}:a);
