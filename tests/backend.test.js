@@ -57,3 +57,19 @@ test('missing email, ambiguous clients, changed recipient or disabled mail block
   }
 });
 test('custom clinic passphrase is accepted at 16+ characters and short passphrases rejected',()=>{const f=fixture();f.props.APP_ACCESS_TOKEN='my-own-clinic-passphrase';assert.equal(f.call('getAllData').success,true);f.props.APP_ACCESS_TOKEN='1234';assert.equal(f.call('getAllData').code,'AUTH');});
+
+test('patient editing preserves historical links when renaming and leaves past amounts unchanged',()=>{
+  const f=fixture();const req={requestId:'edit-patient-1234567',id:'PAT-1',name:'נועה לוי',phone:'0541111111',rate:450,status:'לא פעיל',expected:{name:'נועה',phone:'0541234567',rate:400,status:'פעיל'}};
+  assert.equal(f.call('updatePatient',req).success,true);assert.equal(f.call('updatePatient',req).success,true);
+  const data=f.call('getAllData');assert.equal(data.success,true);assert.equal(data.patients[0].name,'נועה לוי');assert.equal(data.patients[0].rate,450);
+  assert.equal(data.appointments[0].patientId,'PAT-1');assert.equal(data.appointments[0].amount,400);assert.equal(data.appointments[2].patientId,'PAT-2');
+  assert.equal(f.call('updatePatient',{...req,requestId:'stale-patient-1234567',name:'אחר'}).success,false);
+});
+
+test('appointment editing changes selected fields only and rejects stale, paid or reserved sessions',()=>{
+  const f=fixture();const req={requestId:'edit-appointment-1234',id:'APP-1',patientId:'PAT-2',date:'2026-08-15',amount:375,expected:{patientId:'PAT-1',date:'2026-09-01',amount:400}};
+  assert.equal(f.call('updateAppointment',req).success,true);assert.equal(f.call('updateAppointment',req).success,true);
+  const a=f.call('getAllData').appointments[0];assert.equal(a.patientId,'PAT-2');assert.equal(a.date,'2026-08-15');assert.equal(a.amount,375);assert.equal(a.isPaid,false);
+  assert.equal(f.sheets.Appointments.rows[1][7],'');assert.equal(f.call('updateAppointment',{...req,requestId:'stale-appointment-1234'}).success,false);
+  for(const mode of ['ok','timeout']){const g=fixture();g.remoteMode=mode;g.call('createMorningDoc',g.req);assert.equal(g.call('updateAppointment',req).success,false);assert.equal(g.sheets.Appointments.rows[1][4],400);}
+});

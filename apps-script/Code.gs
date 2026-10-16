@@ -19,6 +19,8 @@ function doPost(e) {
     else if(req.action==='getMorningRecipient')result=recipientPreview_(req);
     else if(req.action==='addPatient')result=addPatient_(req);
     else if(req.action==='addAppointment')result=addAppointment_(req);
+    else if(req.action==='updatePatient')result=updatePatient_(req);
+    else if(req.action==='updateAppointment')result=updateAppointment_(req);
     else if(req.action==='createMorningDoc'||req.action==='createMorningDocument')result=issueDocument_(req);
     else fail_('פעולה לא מוכרת');
     return json_(result);
@@ -55,7 +57,7 @@ function appointments_(patients){
   });unique_(list,'פגישות');return {table:t,list:list};
 }
 function environment_(){var env=PropertiesService.getScriptProperties().getProperty('MORNING_ENV')||'sandbox';if(env!=='sandbox'&&env!=='production')fail_('MORNING_ENV חייב להיות sandbox או production.');return env;}
-function readData_(){var p=patients_();var a=appointments_(p).list;var props=PropertiesService.getScriptProperties();return {success:true,supportsEmailDelivery:true,patients:p,appointments:a.map(function(x){var copy=Object.assign({},x);delete copy._row;return copy;}),environment:environment_(),morningConfigured:!!(props.getProperty('MORNING_API_KEY')&&props.getProperty('MORNING_API_SECRET'))};}
+function readData_(){var p=patients_();var a=appointments_(p).list;var props=PropertiesService.getScriptProperties();return {success:true,supportsEditing:true,supportsEmailDelivery:true,patients:p,appointments:a.map(function(x){var copy=Object.assign({},x);delete copy._row;return copy;}),environment:environment_(),morningConfigured:!!(props.getProperty('MORNING_API_KEY')&&props.getProperty('MORNING_API_SECRET'))};}
 function literal_(value){var s=text_(value);return /^[=+@\-]/.test(s)?"'"+s:s;}
 function append_(t,obj){var row=t.headers.map(function(){return '';});Object.keys(obj).forEach(function(key){if(t.cols[key]>=0)row[t.cols[key]]=obj[key];});t.sheet.appendRow(row);SpreadsheetApp.flush();}
 function ensurePatientIdColumn_(t){if(t.cols.patientId<0){t.cols.patientId=t.headers.length;t.headers.push('מזהה מטופל');t.sheet.getRange(1,t.headers.length).setValue('מזהה מטופל');}}
@@ -92,6 +94,35 @@ function addAppointment_(req){
   var id='APP-'+req.requestId;var t=table_('appointment');
   if(!t.rows.some(function(r){return text_(val_(t,r,'id'))===id;})){ensurePatientIdColumn_(t);append_(t,{id:id,timestamp:req.date,date:req.date,name:literal_(p.name),patientId:p.id,amount:amount,status:'ממתין לתשלום',method:'',doc:'',morning:'',pdf:''});}
   var result={success:true,appointmentId:id};record_(rec,req,fp,'done',result);return result;
+}
+function writeRow_(t,row,updates){Object.keys(updates).forEach(function(k){t.sheet.getRange(row,t.cols[k]+1).setValue(updates[k]);});SpreadsheetApp.flush();}
+function editMatches_(current,expected,target,pending){if(!expected)return false;return Object.keys(current).every(function(k){return current[k]===expected[k]||(pending&&current[k]===target[k]);});}
+function updatePatient_(req){
+  var name=text_(req.name),phone=text_(req.phone),rate=amount_(req.rate),status=text_(req.status);
+  if(!name||name.length>100||/^[=+@\-]/.test(name))fail_('שם המטופל אינו תקין.');
+  if(!/^\+?[\d\s()-]{8,20}$/.test(phone))fail_('טלפון לא תקין.');if(['פעיל','לא פעיל'].indexOf(status)<0)fail_('סטטוס לא תקין.');
+  var fp=fingerprint_(['updatePatient',req.id,name,phone,rate,status,req.expected]);var rec=request_(req,fp);if(rec.status==='done')return rec.response;
+  var patients=patients_(),p=patients.filter(function(p){return p.id===req.id;})[0];if(!p)fail_('המטופל לא נמצא.');
+  if(patients.some(function(x){return x.id!==p.id&&x.name===name;}))fail_('כבר קיים מטופל בשם זה.');
+  var current={name:p.name,phone:p.phone,rate:p.rate,status:p.status};var target={name:name,phone:phone,rate:rate,status:status};
+  if(!editMatches_(current,req.expected,target,rec.status==='pending'))fail_('פרטי המטופל השתנו. רעננו ופתחו את העריכה מחדש.');
+  // Assign stable IDs before renaming a patient so historical appointments remain linked.
+  var apps=appointments_(patients),t=table_('patient');ensurePatientIdColumn_(apps.table);
+  apps.list.filter(function(a){return a.patientId===p.id;}).forEach(function(a){apps.table.sheet.getRange(a._row,apps.table.cols.patientId+1).setValue(p.id);});SpreadsheetApp.flush();
+  record_(rec,req,fp,'pending',null);var row=t.rows.filter(function(r){return text_(val_(t,r,'id'))===p.id;})[0];
+  writeRow_(t,row.row,{name:literal_(name),phone:literal_(phone),rate:rate,status:status});var result={success:true,patientId:p.id};record_(rec,req,fp,'done',result);return result;
+}
+function updateAppointment_(req){
+  if(!validDate_(req.date))fail_('תאריך הפגישה אינו תקין.');var amount=amount_(req.amount);
+  var fp=fingerprint_(['updateAppointment',req.id,req.patientId,req.date,amount,req.expected]);var rec=request_(req,fp);if(rec.status==='done')return rec.response;
+  var patients=patients_(),p=patients.filter(function(p){return p.id===req.patientId;})[0];if(!p)fail_('המטופל לא נמצא.');
+  var bundle=appointments_(patients),a=bundle.list.filter(function(a){return a.id===req.id;})[0];if(!a)fail_('הפגישה לא נמצאה.');
+  if(a.isPaid)fail_('הפגישה כבר שולמה. לא ניתן לשנות פרטי פגישה המשויכת למסמך שהופק.');
+  journal_().getDataRange().getValues().slice(1).forEach(function(r){if(['pending','unknown','issued'].indexOf(r[2])>=0&&r[3]){var saved=JSON.parse(r[3]);if(saved.ids&&saved.ids.indexOf(a.id)>=0)fail_('קיימת בקשת הפקה עבור הפגישה. יש להשלים אותה לפני עריכה.');}});
+  var current={patientId:a.patientId,date:a.date,amount:a.amount},target={patientId:p.id,date:req.date,amount:amount};
+  if(!editMatches_(current,req.expected,target,rec.status==='pending'))fail_('הפגישה השתנתה. רעננו ופתחו את העריכה מחדש.');
+  record_(rec,req,fp,'pending',null);ensurePatientIdColumn_(bundle.table);writeRow_(bundle.table,a._row,{patientId:p.id,name:literal_(p.name),date:req.date,timestamp:req.date,amount:amount});
+  var result={success:true,appointmentId:a.id};record_(rec,req,fp,'done',result);return result;
 }
 function selected_(req,allowPaid){
   var p=patients_();var patient=p.filter(function(p){return p.id===req.patientId;})[0];if(!patient)fail_('המטופל לא נמצא.');

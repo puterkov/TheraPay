@@ -3,7 +3,7 @@ import { today, money, validDate, defaultSelection, selectedAppointments, total,
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const demo = new URLSearchParams(location.search).get('demo') === '1';
-const state = { patients:[], appointments:[], patientId:'', month:today().slice(0,7), appointmentsPatient:'ALL', appointmentsMonth:'ALL', documentsPatient:'ALL', documentsMonth:'ALL', selected:new Set(), view:'dashboard', connected:false, loaded:false, loading:false, refreshFailed:false, environment:'sandbox', morningConfigured:false, emailDelivery:false, recipient:null, busy:false };
+const state = { patients:[], appointments:[], patientId:'', month:today().slice(0,7), appointmentsPatient:'ALL', appointmentsMonth:'ALL', documentsPatient:'ALL', documentsMonth:'ALL', selected:new Set(), view:'dashboard', connected:false, loaded:false, loading:false, refreshFailed:false, environment:'sandbox', morningConfigured:false, emailDelivery:false, recipient:null, editing:{}, supportsEditing:false, busy:false };
 let recipientLookup=0;
 let attempt = readAttempt();
 function readAttempt() { try { return JSON.parse(sessionStorage.getItem('THERAPAY_ATTEMPT') || 'null'); } catch { return null; } }
@@ -54,7 +54,7 @@ async function load() {
     $('settings-result').textContent='';
     state.environment = data.environment;
     state.morningConfigured = data.morningConfigured;
-    state.emailDelivery = data.supportsEmailDelivery===true;
+    state.emailDelivery = data.supportsEmailDelivery===true;state.supportsEditing=data.supportsEditing===true;
     rememberAccess(accessToken(),localStorage.getItem('THERAPAY_REMEMBER')!=='false');
     if (!patient()) { state.patientId = state.patients[0]?.id || ''; resetSelection(); }
     state.selected = new Set(chosen().map(a => a.id));
@@ -82,7 +82,7 @@ function view(name) {
 function appointmentRow(a,selectable=false){
   const date=validDate(a.date)?a.date.slice(2).split('-').reverse().join('.'):'חסר תאריך';
   const selection=selectable?`<td class="pick-cell"><label class="cell-pick"><input type="checkbox" data-appointment="${esc(a.id)}" aria-label="בחירת פגישה ${esc(displayDate(a.date))}" ${state.selected.has(a.id)?'checked':''} ${a.isPaid||!validDate(a.date)?'disabled':''}></label></td>`:'';
-  return `<tr data-record-row data-detail="${esc(a.id)}">${selection}<td class="date-cell"><button class="row-open" data-detail="${esc(a.id)}" aria-label="פרטי פגישה ${esc(displayDate(a.date))}"><span dir="ltr">${esc(date)}</span></button></td>${selectable?'':`<td class="name-cell">${esc(a.clientName)}</td>`}<td class="amount-cell">${esc(money(a.amount))}</td><td><span class="status-pill ${a.isPaid?'paid':'pending'}">${a.isPaid?'שולם':'ממתין'}</span></td></tr>`;
+  return `<tr class="${selectable?(a.isPaid?'selection-locked':!validDate(a.date)?'selection-locked':'selection-available'):''}" data-record-row data-detail="${esc(a.id)}">${selection}<td class="date-cell"><button class="row-open" data-detail="${esc(a.id)}" aria-label="פרטי פגישה ${esc(displayDate(a.date))}"><span dir="ltr">${esc(date)}</span></button></td>${selectable?'':`<td class="name-cell">${esc(a.clientName)}</td>`}<td class="amount-cell">${esc(money(a.amount))}</td><td><span class="status-pill ${a.isPaid?'paid':'pending'}">${a.isPaid?'שולם':selectable?'לבחירה':'ממתין'}</span></td></tr>`;
 }
 function appointmentTable(rows,selectable=false,caption='פגישות'){
   return `<div class="session-table-wrap"><table class="session-table ${selectable?'collection-table':'appointments-table'}"><caption class="sr-only">${esc(caption)}</caption><thead><tr>${selectable?'<th scope="col" class="pick-cell"><span class="sr-only">בחירה</span></th>':''}<th scope="col">תאריך</th>${selectable?'':'<th scope="col">מטופל</th>'}<th scope="col">סכום</th><th scope="col">סטטוס</th></tr></thead>${rows}</table></div>`;
@@ -91,6 +91,7 @@ function showAppointmentDetails(id){
   const a=state.appointments.find(a=>a.id===id);if(!a)return;
   const link=safeLink(a.pdfUrl);
   $('appointment-detail-content').innerHTML=`<dl class="session-details"><dt>מטופל</dt><dd>${esc(a.clientName)}</dd><dt>תאריך</dt><dd>${esc(displayDate(a.date))}</dd><dt>סכום</dt><dd>${esc(money(a.amount))}</dd><dt>סטטוס</dt><dd>${a.isPaid?'שולם':'ממתין לתשלום'}</dd><dt>אמצעי תשלום</dt><dd>${esc(a.paymentMethod||'—')}</dd><dt>מספר חשבונית</dt><dd>${esc(a.docNumber||'—')}</dd></dl>${link?`<a class="button secondary" href="${esc(link)}" target="_blank" rel="noopener noreferrer">צפייה במסמך ↗</a>`:''}`;
+  $('appointment-detail-content').innerHTML+=a.isPaid?'<p class="small muted">פגישה ששולמה · הפרטים נשמרים בהתאם למסמך שהופק.</p>':`<button data-edit-appointment="${esc(a.id)}" class="secondary">עריכת פגישה</button>`;
   $('appointment-details').showModal();
 }
 function renderCollection() {
@@ -128,7 +129,7 @@ function render() {
   renderConnectionStatus();
   renderDashboard();
   renderCollection();
-  $('patient-list').innerHTML = state.patients.map(p => `<article class="patient-card"><div class="row"><strong>${esc(p.name)}</strong><span>${esc(money(p.rate))} לפגישה</span></div><div class="small muted">${esc(p.phone)} · ${esc(p.status)}</div></article>`).join('') || '<div class="empty">טרם נוספו מטופלים.</div>';
+  $('patient-list').innerHTML = state.patients.map(p => `<article class="patient-card"><div class="row"><strong>${esc(p.name)}</strong><span>${esc(money(p.rate))} לפגישה</span></div><div class="small muted">${esc(p.phone)} · ${esc(p.status)}</div><button class="quiet compact" data-edit-patient="${esc(p.id)}" aria-label="עריכת ${esc(p.name)}">✎ עריכה</button></article>`).join('') || '<div class="empty">טרם נוספו מטופלים.</div>';
   renderAppointments();
   renderDocuments();
   view(state.view);
@@ -192,7 +193,7 @@ function openDialog(name) {
   if (name === 'patient' || name === 'appointment') {
     if (!state.connected && !demo) { notice('יש להתחבר לקליניקה לפני הוספת נתונים.',true); return openDialog('settings'); }
     if (demo) { notice('זו סביבת הדגמה. שמירת נתונים תתאפשר לאחר חיבור לקליניקה.'); return; }
-    const form = $(name+'-form'); form.reset();
+    const form = $(name+'-form'); form.reset();delete state.editing[name];delete form.dataset.fingerprint;delete form.dataset.requestId;$(name+'-title').textContent=name==='patient'?'מטופל חדש':'פגישה חדשה';if(name==='patient')$('patient-status-field').hidden=true;
     if (name === 'appointment') {
       if (!state.patients.length) { notice('יש להוסיף מטופל לפני רישום פגישה.',true); return; }
       form.elements.patientId.innerHTML = state.patients.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
@@ -202,6 +203,21 @@ function openDialog(name) {
     }
   }
   $(name).showModal();
+}
+function editRecord(type,id){
+  if(state.busy)return;
+  if(!demo&&!state.supportsEditing){notice('יש לעדכן את Apps Script כדי לאפשר עריכה.',true);return;}
+  const record=(type==='patient'?state.patients:state.appointments).find(r=>r.id===id);if(!record)return;
+  if(type==='appointment'&&record.isPaid)return;
+  const f=$(type+'-form');f.reset();delete f.dataset.fingerprint;delete f.dataset.requestId;
+  state.editing[type]={...record};$(type+'-title').textContent=type==='patient'?'עריכת מטופל':'עריכת פגישה';
+  if(type==='patient'){
+    for(const key of ['name','phone','rate','status'])f.elements[key].value=record[key];$('patient-status-field').hidden=false;
+  }else{
+    f.elements.patientId.innerHTML=state.patients.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+    for(const key of ['patientId','date','amount'])f.elements[key].value=record[key];$('appointment-details').close();
+  }
+  $(type).showModal();
 }
 function fillRate() { const f=$('appointment-form'); f.elements.amount.value = state.patients.find(p => p.id === f.elements.patientId.value)?.rate ?? ''; }
 function updateMessageLink() {
@@ -227,6 +243,8 @@ async function showPayment() {
 }
 
 document.addEventListener('click', event => {
+  const editPatient=event.target.closest('[data-edit-patient]');if(editPatient)editRecord('patient',editPatient.dataset.editPatient);
+  const editAppointment=event.target.closest('[data-edit-appointment]');if(editAppointment)editRecord('appointment',editAppointment.dataset.editAppointment);
   const open=event.target.closest('[data-open]'); if(open) openDialog(open.dataset.open);
   const close=event.target.closest('[data-close]'); if(close && !state.busy) close.closest('dialog').close();
   const tab=event.target.closest('[data-view]'); if(tab && !state.busy) view(tab.dataset.view);
@@ -255,13 +273,20 @@ $('settings-form').addEventListener('submit',async e=>{
 $('refresh').addEventListener('click',async()=>{try{await load();$('settings-result').textContent='הנתונים עודכנו.';}catch(error){$('settings-result').textContent=error.message;}});
 $('disconnect').addEventListener('click',()=>{if(state.loading)return;forgetAccess();state.patients=[];state.appointments=[];state.patientId='';state.selected.clear();state.connected=false;state.loaded=false;state.refreshFailed=false;render();$('settings-result').textContent='התנתקת מהקליניקה.';});
 for(const type of ['patient','appointment']) $(type+'-form').addEventListener('submit',async e=>{
-  e.preventDefault();const f=e.target;const b=f.querySelector('[type=submit]');b.disabled=true;
+  e.preventDefault();if(state.busy)return;if(demo){notice('הדגמה בלבד · השינויים לא נשמרו.');$(type).close();return;}
+  const f=e.target,b=f.querySelector('[type=submit]'),original=b.innerHTML,editing=state.editing[type];
   const values=Object.fromEntries(new FormData(f));
   if(type==='patient')values.rate=Number(values.rate);else values.amount=Number(values.amount);
-  // The same form submission keeps its request ID after network failure.
+  if(editing){values.id=editing.id;values.expected=type==='patient'?{name:editing.name,phone:editing.phone,rate:editing.rate,status:editing.status}:{patientId:editing.patientId,date:editing.date,amount:editing.amount};}
   const fingerprint=JSON.stringify(values);if(f.dataset.fingerprint!==fingerprint){f.dataset.fingerprint=fingerprint;f.dataset.requestId=uuid();}
   let formStatus=f.querySelector('[role=status]');if(formStatus)formStatus.remove();
-  try{await api(type==='patient'?'addPatient':'addAppointment',{...values,requestId:f.dataset.requestId});f.closest('dialog').close();delete f.dataset.fingerprint;delete f.dataset.requestId;await load();notice(type==='patient'?'המטופל נוסף בהצלחה':'הפגישה נוספה בהצלחה');}catch(error){notice(error.message,true);formStatus=document.createElement('p');formStatus.setAttribute('role','status');formStatus.textContent=error.message;f.append(formStatus);}finally{b.disabled=false;}
+  state.busy=true;b.disabled=true;b.innerHTML='<span class="spinner" aria-hidden="true"></span><span>שומר…</span>';f.setAttribute('aria-busy','true');
+  try{
+    await api((editing?'update':'add')+(type==='patient'?'Patient':'Appointment'),{...values,requestId:f.dataset.requestId});
+    f.closest('dialog').close();delete f.dataset.fingerprint;delete f.dataset.requestId;delete state.editing[type];state.busy=false;
+    try{await load();notice(editing?'השינויים נשמרו.':type==='patient'?'המטופל נוסף בהצלחה':'הפגישה נוספה בהצלחה');}catch(error){notice('השמירה הושלמה. יש לרענן את הנתונים דרך ההגדרות.',true);}
+  }catch(error){formStatus=document.createElement('p');formStatus.setAttribute('role','status');formStatus.textContent=error.message;f.append(formStatus);}
+  finally{state.busy=false;b.disabled=false;b.innerHTML=original;f.removeAttribute('aria-busy');}
 });
 $('pay-form').addEventListener('submit',async e=>{
   e.preventDefault();if(state.busy||state.loading||!chosen().length)return;
@@ -297,6 +322,7 @@ if(demo){
   const m=state.month;const prev=new Date(Number(m.slice(0,4)),Number(m.slice(5))-2,15);const before=`${prev.getFullYear()}-${String(prev.getMonth()+1).padStart(2,'0')}`;
   state.patients=[{id:'PAT-DEMO-1',name:'נועה לוי',phone:'050-0000000',rate:350,status:'פעיל'},{id:'PAT-DEMO-2',name:'אורי גפן',phone:'052-0000000',rate:400,status:'פעיל'}];
   state.patientId=state.patients[0].id;state.appointments=[['01',before+'-03',350],['02',before+'-10',350],['03',before+'-24',350],['04',m+'-01',350],['05',m+'-08',350]].map(([id,date,amount])=>({id:'APP-DEMO-'+id,patientId:state.patientId,clientName:'נועה לוי',date,amount,isPaid:false,docNumber:'',pdfUrl:''}));
+  Object.assign(state.appointments[4],{isPaid:true,docNumber:'DEMO-1002'});
   state.appointments.push({id:'APP-DEMO-06',patientId:'PAT-DEMO-2',clientName:'אורי גפן',date:before+'-15',amount:400,isPaid:true,docNumber:'DEMO-1001',pdfUrl:''});
   resetSelection();render();
 }else{render();if(apiUrl()&&accessToken())load().catch(()=>{});}
