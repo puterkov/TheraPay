@@ -174,3 +174,15 @@ test('slow task completion shows a spinner and blocks duplicate changes until su
   assert.equal(f.run('state.savingTaskId'),null);assert.equal(f.run('state.tasks[0].completed'),false);assert.ok(!f.elements['task-list'].innerHTML.includes('spinner'));
   assert.equal(f.run('state.busy'),false);assert.equal(f.elements['task-list-head'].hidden,false);
 });
+
+test('initial loader remains until clinic data and tasks are both ready',async()=>{
+  const f=fixture();let finishTasks;f.data.supportsTasks=true;f.queue.push(structuredClone(f.data),new Promise(resolve=>{finishTasks=resolve;}));
+  const pending=f.run('load()');assert.equal(f.elements['app-loader'].hidden,false);assert.equal(f.elements['app-shell'].hidden,true);assert.equal(f.elements['app-shell'].inert,true);
+  await new Promise(resolve=>setTimeout(resolve,0));assert.equal(f.calls.at(-1).action,'getTasks');assert.equal(f.elements['app-loader'].hidden,false);
+  finishTasks({success:true,apiVersion:2,tasks:[]});await pending;
+  assert.equal(f.elements['app-loader'].hidden,true);assert.equal(f.elements['app-shell'].hidden,false);assert.equal(f.elements['app-shell'].inert,false);
+});
+test('initial load failure always releases loader and displays an error for retry',async()=>{
+  const f=fixture();f.queue.push(new Error('שרת לא זמין'));await assert.rejects(f.run('load()'));
+  assert.equal(f.elements['app-loader'].hidden,true);assert.equal(f.elements['app-shell'].hidden,false);assert.match(f.elements.notice.textContent,/שרת לא זמין/);assert.equal(f.elements.refresh.disabled,false);
+});

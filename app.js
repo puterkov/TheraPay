@@ -37,8 +37,17 @@ async function api(action, payload = {}) {
   } finally { clearTimeout(timeout); }
 }
 
+function setAppLoading(loading){
+  $('app-loader').hidden=!loading;
+  $('app-shell').hidden=loading;
+  $('app-shell').inert=loading;
+  $('app-shell').setAttribute('aria-busy',String(loading));
+}
+
 async function load() {
   if (state.busy || state.loading) return;
+  const initialLoad=!state.loaded;
+  if(initialLoad)setAppLoading(true);
   state.loading=true;
   $('connection').textContent = 'טוען…';
   updateSelection();
@@ -61,6 +70,7 @@ async function load() {
     render();
     $('notice').hidden=true;
     if(state.supportsTasks)await loadTasks();
+    if(state.tasksError)notice('נתוני הקליניקה נטענו, אך רענון המשימות לא הושלם. אפשר לנסות שוב דרך ההגדרות.',true);
   } catch (error) {
     // A failed read is not a logout. Only an explicit authentication failure invalidates access.
     if(error.code==='AUTH'){state.connected=false;forgetAccess();}
@@ -69,7 +79,7 @@ async function load() {
     render();
     notice(state.loaded && error.code!=='AUTH' ? 'רענון הנתונים לא הושלם. מוצגים הנתונים האחרונים; אפשר לנסות שוב דרך ההגדרות.' : error.message,true);
     throw error;
-  } finally {state.loading=false;$('refresh').disabled=false;renderConnectionStatus();updateSelection();renderTasks();}
+  } finally {state.loading=false;$('refresh').disabled=false;renderConnectionStatus();updateSelection();renderTasks();if(initialLoad)setAppLoading(false);}
 }
 
 function resetSelection() { state.selected = defaultSelection(state.appointments, state.patientId, state.month); }
@@ -394,5 +404,5 @@ if(demo){
   Object.assign(state.appointments[4],{isPaid:true,docNumber:'DEMO-1002'});
   state.appointments.push({id:'APP-DEMO-06',patientId:'PAT-DEMO-2',clientName:'אורי גפן',date:before+'-15',amount:400,isPaid:true,docNumber:'DEMO-1001',pdfUrl:''});
   state.tasks=[{id:'TASK-DEMO-1',text:'להכין סיכום חודשי',dueDate:today(),remindDays:0,completed:false,revision:1},{id:'TASK-DEMO-2',text:'לעדכן את פרטי הקליניקה',dueDate:'',remindDays:1,completed:false,revision:1}];
-  resetSelection();render();
-}else{render();if(apiUrl()&&accessToken())load().catch(()=>{});}
+  resetSelection();render();setAppLoading(false);
+}else{render();if(apiUrl()&&accessToken())load().catch(error=>{openDialog('settings');$('settings-result').textContent=error.message;});else{openDialog('settings');setAppLoading(false);}}
