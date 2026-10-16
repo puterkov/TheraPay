@@ -245,17 +245,21 @@ async function showPayment() {
   $('pay-form').elements.paymentDate.value = today();
   $('pay-form').elements.paymentDate.max = today();
   $('pay-summary').textContent = `${patient().name} · ${chosen().length} פגישות · ${money(total(chosen()))}`;
-  $('pay-environment').textContent = demo ? 'הדגמה בלבד · לא יופק מסמך.' : state.environment === 'sandbox' ? 'סביבת בדיקות Morning · המסמך שיופק הוא מסמך בדיקה.' : 'Morning · הפקת מסמך בחשבון הפעיל.';
-  $('pay-result').textContent=''; $('pay-progress').hidden=true; $('issue').disabled=false;
+  $('pay-result').textContent='';$('pay-progress').hidden=true;
   state.recipient=null;
-  $('pay-email').textContent='בודק את כתובת המייל הרשומה ב־Morning…';
-  $('issue').disabled=true;
+  $('pay-email').textContent='';$('pay-email').hidden=true;
+  $('pay-email-check').hidden=false;
+  $('issue').disabled=true;$('issue').textContent='הפקה ושליחה';
   $('pay').showModal();
   const lookup=++recipientLookup;
-  if(demo){$('pay-email').textContent='הדגמה · כתובת מייל תוצג כאן לפני ההפקה.';$('issue').disabled=false;return;}
-  if(!state.emailDelivery){$('pay-email').textContent='נדרש עדכון בקנד כדי להפיק ולשלוח למייל הרשום ב־Morning.';return;}
-  try{const data=await api('getMorningRecipient',{patientId:state.patientId});if(lookup!==recipientLookup)return;state.recipient=data.recipient;$('pay-email').textContent='החשבונית תישלח דרך Morning אל: '+data.recipient.emails.join(', ');$('issue').disabled=false;}
-  catch(error){if(lookup===recipientLookup)$('pay-email').textContent=error.message;}
+  if(demo){$('pay-email-check').hidden=true;$('issue').disabled=false;return;}
+  if(!state.emailDelivery){$('pay-email-check').hidden=true;$('pay-email').hidden=false;$('pay-email').textContent='נדרש עדכון בקנד כדי להפיק ולשלוח למייל הרשום ב־Morning.';return;}
+  try{
+    const data=await api('getMorningRecipient',{patientId:state.patientId});if(lookup!==recipientLookup)return;
+    if(!data.recipient?.id||!Array.isArray(data.recipient.emails)||!data.recipient.emails.length)throw new Error('לא נמצאה כתובת מייל לשליחת המסמך.');
+    state.recipient=data.recipient;$('issue').disabled=false;
+  }catch(error){if(lookup===recipientLookup){$('pay-email').hidden=false;$('pay-email').textContent=error.message;}}
+  finally{if(lookup===recipientLookup)$('pay-email-check').hidden=true;}
 }
 
 document.addEventListener('click', event => {
@@ -394,7 +398,7 @@ $('pay-form').addEventListener('submit',async e=>{
     $('pay-result').textContent=error.message;
     if(error.code==='VALIDATION'||error.code==='MORNING_REJECTED'){attempt=null;sessionStorage.removeItem('THERAPAY_ATTEMPT');}
     $('issue').disabled=false;
-  }finally{state.busy=false;$('pay-progress').hidden=true;$('pay-form').removeAttribute('aria-busy');$('issue').textContent='הפקת חשבונית מס־קבלה';updateSelection();}
+  }finally{state.busy=false;$('pay-progress').hidden=true;$('pay-form').removeAttribute('aria-busy');$('issue').textContent='הפקה ושליחה';updateSelection();}
 });
 
 if(demo){

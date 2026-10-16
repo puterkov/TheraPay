@@ -74,7 +74,7 @@ test('appointment filters combine patient and named month/year and survive refre
 });
 test('remembered access survives closing the tab session and explicit logout removes it',async()=>{const f=fixture();await f.connect();assert.equal(f.localStorage.getItem('THERAPAY_ACCESS_TOKEN'),'fixture-access');f.sessionStorage.removeItem('THERAPAY_ACCESS_TOKEN');assert.equal(f.run('accessToken()'),'fixture-access');f.elements.disconnect.listeners.click();assert.equal(f.run('accessToken()'),'');});
 test('remember opt-out uses only tab storage and authentication rejection clears both stores',async()=>{const f=fixture();f.localStorage.setItem('THERAPAY_REMEMBER','false');await f.connect();assert.equal(f.localStorage.getItem('THERAPAY_ACCESS_TOKEN'),null);assert.equal(f.run('accessToken()'),'fixture-access');f.run('rememberAccess("remembered-access",true)');f.queue.push({success:false,apiVersion:2,code:'AUTH',message:'קוד שגוי'});await assert.rejects(f.run('load()'));assert.equal(f.run('accessToken()'),'');});
-test('opening payment reads the registered recipient before enabling issuance',async()=>{const f=fixture();await f.connect();f.queue.push({success:true,apiVersion:2,recipient:{id:'MORNING-1',emails:['invoice@example.com']}});await f.run('showPayment()');assert.equal(f.run('state.recipient.id'),'MORNING-1');assert.match(f.elements['pay-email'].textContent,/invoice@example.com/);assert.equal(f.elements.issue.disabled,false);assert.equal(f.calls.filter(c=>c.action==='createMorningDoc').length,0);});
+test('opening payment reads the registered recipient before enabling issuance',async()=>{const f=fixture();await f.connect();f.queue.push({success:true,apiVersion:2,recipient:{id:'MORNING-1',emails:['invoice@example.com']}});await f.run('showPayment()');assert.equal(f.run('state.recipient.id'),'MORNING-1');assert.equal(f.elements['pay-email'].hidden,true);assert.equal(f.elements['pay-email-check'].hidden,true);assert.equal(f.elements.issue.disabled,false);assert.equal(f.calls.filter(c=>c.action==='createMorningDoc').length,0);});
 test('old backend without mail capability cannot silently issue an unsent invoice',async()=>{const f=fixture();f.data.supportsEmailDelivery=false;await f.connect();await f.run('showPayment()');assert.equal(f.elements.issue.disabled,true);assert.match(f.elements['pay-email'].textContent,/עדכון בקנד/);assert.equal(f.calls.filter(c=>c.action==='createMorningDoc').length,0);});
 
 test('successful connection leaves settings, while failed connection stays there',async()=>{
@@ -185,4 +185,13 @@ test('initial loader remains until clinic data and tasks are both ready',async()
 test('initial load failure always releases loader and displays an error for retry',async()=>{
   const f=fixture();f.queue.push(new Error('שרת לא זמין'));await assert.rejects(f.run('load()'));
   assert.equal(f.elements['app-loader'].hidden,true);assert.equal(f.elements['app-shell'].hidden,false);assert.match(f.elements.notice.textContent,/שרת לא זמין/);assert.equal(f.elements.refresh.disabled,false);
+});
+
+test('recipient check shows a spinner and keeps issue disabled until a usable email is found',async()=>{
+  const f=fixture();await f.connect();let finish;f.queue.push(new Promise(resolve=>{finish=resolve;}));
+  const pending=f.run('showPayment()');assert.equal(f.elements.issue.disabled,true);assert.equal(f.elements['pay-email-check'].hidden,false);
+  finish({success:true,apiVersion:2,recipient:{id:'M1',emails:[]}});await pending;
+  assert.equal(f.elements.issue.disabled,true);assert.equal(f.elements['pay-email-check'].hidden,true);assert.equal(f.elements['pay-email'].hidden,false);
+  f.queue.push({success:true,apiVersion:2,recipient:{id:'M1',emails:['invoice@example.com']}});await f.run('showPayment()');
+  assert.equal(f.elements.issue.disabled,false);assert.equal(f.elements['pay-email-check'].hidden,true);assert.equal(f.elements['pay-email'].hidden,true);
 });
