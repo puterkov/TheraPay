@@ -3,7 +3,7 @@ import { today, money, taskReminderDate, actionableTasks, dashboardMetrics, vali
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const demo = new URLSearchParams(location.search).get('demo') === '1';
-const state = { patients:[], appointments:[], tasks:[], supportsTasks:false, tasksError:'', taskEdit:null, patientId:'', month:today().slice(0,7), appointmentsPatient:'ALL', appointmentsMonth:'ALL', documentsPatient:'ALL', documentsMonth:'ALL', selected:new Set(), view:'dashboard', connected:false, loaded:false, loading:false, refreshFailed:false, environment:'sandbox', morningConfigured:false, emailDelivery:false, recipient:null, editing:{}, supportsEditing:false, busy:false };
+const state = { patients:[], appointments:[], tasks:[], supportsTasks:false, tasksError:'', taskEdit:null, savingTaskId:null, patientId:'', month:today().slice(0,7), appointmentsPatient:'ALL', appointmentsMonth:'ALL', documentsPatient:'ALL', documentsMonth:'ALL', selected:new Set(), view:'dashboard', connected:false, loaded:false, loading:false, refreshFailed:false, environment:'sandbox', morningConfigured:false, emailDelivery:false, recipient:null, editing:{}, supportsEditing:false, busy:false };
 let recipientLookup=0;
 let attempt = readAttempt();
 function readAttempt() { try { return JSON.parse(sessionStorage.getItem('THERAPAY_ATTEMPT') || 'null'); } catch { return null; } }
@@ -307,8 +307,9 @@ function renderTasks(){
   $('tasks-alert').hidden=!due.length;
   $('tasks-alert').textContent='✓ משימות לטיפול · '+due.length;
   $('tasks-status').textContent=state.tasksError||(!available?'יש לעדכן את Apps Script ולרענן נתונים בהגדרות להפעלת משימות.':demo?'הדגמה · שינויים במשימות אינם נשמרים.':'');
-  const row=t=>`<article class="task-row ${t.completed?'task-completed':due.some(x=>x.id===t.id)?'task-actionable':''}"><label class="task-check"><input type="checkbox" data-task-toggle="${esc(t.id)}" ${t.completed?'checked':''} aria-label="${t.completed?'פתיחה מחדש':'השלמת משימה'}: ${esc(t.text)}" ${state.busy||state.loading?'disabled':''}></label><div class="task-content"><div class="task-text" title="${esc(t.text)}">${esc(t.text)}</div><small>${t.dueDate?esc(displayDate(t.dueDate)):'ללא תאריך יעד'}${!t.completed&&due.some(x=>x.id===t.id)?' · לטיפול':''}</small></div><button class="quiet task-edit" data-edit-task="${esc(t.id)}" aria-label="עריכת משימה: ${esc(t.text)}">✎</button></article>`;
+  const row=t=>`<article data-task-id="${esc(t.id)}" aria-busy="${state.savingTaskId===t.id}" class="task-row ${t.completed?'task-completed':due.some(x=>x.id===t.id)?'task-actionable':''}"><label class="task-check">${state.savingTaskId===t.id?'<span class="spinner" role="status"><span class="sr-only">שומר סימון…</span></span>':`<input type="checkbox" data-task-toggle="${esc(t.id)}" ${t.completed?'checked':''} aria-label="${t.completed?'פתיחה מחדש':'השלמת משימה'}: ${esc(t.text)}" ${state.busy||state.loading?'disabled':''}>`}</label><div class="task-content"><div class="task-text" title="${esc(t.text)}">${esc(t.text)}</div><small>${t.dueDate?esc(displayDate(t.dueDate)):'ללא תאריך יעד'}${!t.completed&&due.some(x=>x.id===t.id)?' · לטיפול':''}</small></div><button class="quiet task-edit" data-edit-task="${esc(t.id)}" aria-label="עריכת משימה: ${esc(t.text)}" ${state.busy?'disabled':''}>✎</button></article>`;
   const list=available?[...state.tasks].sort((a,b)=>(a.dueDate||'9999').localeCompare(b.dueDate||'9999')):[];
+  $('task-list-head').hidden=!list.some(t=>!t.completed);
   $('task-list').innerHTML=list.filter(t=>!t.completed).map(row).join('')||'<div class="empty">אין משימות פתוחות.</div>';
   const done=list.filter(t=>t.completed);$('completed-tasks').hidden=!done.length;$('task-done-list').innerHTML=done.map(row).join('');
   $('new-task').disabled=!available||state.busy||state.loading;
@@ -344,13 +345,13 @@ $('task-form').addEventListener('submit',async e=>{
 });
 async function toggleTask(id,completed){
   if(state.busy||state.loading)return;const task=state.tasks.find(t=>t.id===id);if(!task)return;
-  state.busy=true;renderTasks();
+  state.busy=true;state.savingTaskId=id;renderTasks();
   const values={id:task.id,text:task.text,dueDate:task.dueDate,remindDays:task.remindDays,completed,expectedRevision:task.revision};
   // Keep a completion retry's ID when a response is lost.
   const fingerprint=JSON.stringify(values);if(task._pending?.fingerprint!==fingerprint)task._pending={fingerprint,id:uuid()};
   try{acceptTask(await saveTask(values,task._pending.id));state.tasksError='';}
   catch(error){state.tasksError=error.message;}
-  finally{state.busy=false;renderTasks();}
+  finally{state.busy=false;state.savingTaskId=null;renderTasks();}
 }
 for(const id of ['task-list','task-done-list'])$(id).addEventListener('change',e=>{if(e.target.dataset.taskToggle)toggleTask(e.target.dataset.taskToggle,e.target.checked);});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')renderTasks();});

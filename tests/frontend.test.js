@@ -164,3 +164,13 @@ test('task form preserves its request ID on retry and saves content with its cho
   f.queue.push({success:true,apiVersion:2,task:{id:'TASK-1',text:'תזכורת קצרה',dueDate:'2026-10-20',remindDays:0,completed:false,revision:1}});
   await form.listeners.submit({preventDefault(){},target:form});assert.equal(f.calls.at(-1).requestId,id);assert.equal(f.calls.at(-1).remindDays,0);assert.equal(f.run('state.tasks.length'),1);
 });
+
+test('slow task completion shows a spinner and blocks duplicate changes until success or failure',async()=>{
+  const f=fixture();await f.connect();f.run('state.supportsTasks=true;state.tasks=[{id:"t1",text:"test",dueDate:today(),remindDays:0,completed:false,revision:1}];renderTasks()');
+  let finish;f.queue.push(new Promise(resolve=>{finish=resolve;}));const pending=f.run('toggleTask("t1",true)');
+  assert.equal(f.run('state.busy'),true);assert.match(f.elements['task-list'].innerHTML,/spinner/);assert.match(f.elements['task-list'].innerHTML,/aria-busy="true"/);
+  await f.run('toggleTask("t1",true)');assert.equal(f.calls.filter(c=>c.action==='saveTask').length,1);
+  finish({success:false,apiVersion:2,message:'נסה שוב'});await pending;
+  assert.equal(f.run('state.savingTaskId'),null);assert.equal(f.run('state.tasks[0].completed'),false);assert.ok(!f.elements['task-list'].innerHTML.includes('spinner'));
+  assert.equal(f.run('state.busy'),false);assert.equal(f.elements['task-list-head'].hidden,false);
+});
