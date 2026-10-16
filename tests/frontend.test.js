@@ -141,9 +141,9 @@ test('collection hides paid appointments and defaults to prior unpaid months onl
 
 test('task alerts appear only from the reminder date and disappear after completion',async()=>{
   const f=fixture();await f.connect();f.run('state.supportsTasks=true;state.tasks=[{id:"t1",text:"private task",dueDate:today(),remindDays:0,completed:false,revision:1}];renderTasks()');
-  assert.equal(f.elements['tasks-alert'].hidden,false);assert.ok(!f.elements['tasks-alert'].textContent.includes('private task'));
+  assert.equal(f.elements['tasks-alert'].hidden,false);assert.ok(!f.elements['tasks-alert'].textContent.includes('private task'));assert.match(f.elements['task-list'].innerHTML,/task-actionable/);
   f.run('state.tasks[0].completed=true;renderTasks()');assert.equal(f.elements['tasks-alert'].hidden,true);
-  f.run('state.tasks[0].completed=false;state.tasks[0].dueDate="2099-01-01";renderTasks()');assert.equal(f.elements['tasks-alert'].hidden,true);
+  f.run('state.tasks[0].completed=false;state.tasks[0].dueDate="2099-01-01";renderTasks()');assert.equal(f.elements['tasks-alert'].hidden,true);assert.ok(!f.elements['task-list'].innerHTML.includes('task-actionable'));
   f.run('state.tasks[0].dueDate="";renderTasks()');assert.equal(f.elements['tasks-alert'].hidden,true);
 });
 test('task API failure does not break the clinic connection or its loaded appointments',async()=>{
