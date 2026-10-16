@@ -102,16 +102,15 @@ function renderCollection() {
   $('patient-meta').hidden = !p;
   $('patient-meta').textContent = p ? `${p.phone || 'טלפון חסר'} · ${money(p.rate)} לפגישה` : '';
   if (!p) { $('appointment-groups').innerHTML = '<div class="empty">בחרו מטופל לצפייה בפגישות וביתרה שלו.</div>'; updateSelection(); return; }
-  const apps = state.appointments.filter(a => a.patientId === p.id).sort((a,b) => a.date.localeCompare(b.date));
+  const apps = state.appointments.filter(a => a.patientId === p.id && !a.isPaid).sort((a,b) => a.date.localeCompare(b.date));
   const groups = [
     ['חודשים קודמים · חובות מסומנים מראש', apps.filter(a => !a.isPaid && validDate(a.date) && a.date < state.month+'-01')],
     ['החודש הנבחר · לבחירה לפי הצורך', apps.filter(a => !a.isPaid && a.date.slice(0,7) === state.month)],
     ['פגישות עתידיות', apps.filter(a => !a.isPaid && validDate(a.date) && a.date.slice(0,7) > state.month)],
-    ['פגישות ששולמו', apps.filter(a => a.isPaid && a.date.slice(0,7) <= state.month)],
     ['נדרש תיקון תאריך בגיליון', apps.filter(a => !a.isPaid && !validDate(a.date))]
   ];
   const rows=groups.filter(([,list])=>list.length).map(([title,list])=>`<tbody><tr class="table-group"><th colspan="4" scope="rowgroup">${esc(title)}</th></tr>${list.map(a=>appointmentRow(a,true)).join('')}</tbody>`).join('');
-  $('appointment-groups').innerHTML=rows?appointmentTable(rows,true,'פגישות לתשלום עבור '+p.name):'<div class="empty">עדיין אין פגישות למטופל הזה.</div>';
+  $('appointment-groups').innerHTML=rows?appointmentTable(rows,true,'פגישות לתשלום עבור '+p.name):'<div class="empty">אין פגישות לתשלום למטופל הזה.</div>';
   updateSelection();
 }
 function updateSelection() {

@@ -128,6 +128,13 @@ test('editing is blocked with old backend and paid appointments remain read only
   f.run('state.supportsEditing=true;state.appointments[0].isPaid=true;editRecord("appointment","a1")');assert.equal(f.elements.appointment.open,undefined);
 });
 
-test('collection renders separate available and locked selection styles',async()=>{
-  const f=fixture();f.data.appointments[1].isPaid=true;await f.connect();assert.match(f.elements['appointment-groups'].innerHTML,/selection-available/);assert.match(f.elements['appointment-groups'].innerHTML,/selection-locked/);assert.match(f.elements['appointment-groups'].innerHTML,/disabled/);
+test('collection hides paid appointments and defaults to prior unpaid months only',async()=>{
+  const f=fixture();const current=domain.today().slice(0,7);
+  f.data.appointments[1].isPaid=true;
+  f.data.appointments.push({id:'a3',patientId:'p1',clientName:'בדיקה',date:current+'-01',amount:350,isPaid:false});
+  await f.connect();const rows=f.elements['appointment-groups'].innerHTML;
+  assert.match(rows,/selection-available/);assert.ok(!rows.includes('data-appointment="a2"'));assert.ok(!rows.includes('פגישות ששולמו'));
+  assert.match(rows,/data-appointment="a1"[^>]*checked/);assert.ok(!/data-appointment="a3"[^>]*checked/.test(rows));
+  assert.equal(f.run('state.selected.has("a1")'),true);assert.equal(f.run('state.selected.has("a3")'),false);
+  f.data.appointments.forEach(a=>a.isPaid=true);f.queue.push(structuredClone(f.data));await f.run('load()');assert.match(f.elements['appointment-groups'].innerHTML,/אין פגישות לתשלום/);
 });
