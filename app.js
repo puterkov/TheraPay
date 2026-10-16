@@ -129,7 +129,7 @@ function render() {
   renderConnectionStatus();
   renderDashboard();
   renderCollection();
-  $('patient-list').innerHTML = state.patients.map(p => `<article class="patient-card"><div class="row"><strong>${esc(p.name)}</strong><span>${esc(money(p.rate))} לפגישה</span></div><div class="small muted">${esc(p.phone)} · ${esc(p.status)}</div><button class="quiet compact" data-edit-patient="${esc(p.id)}" aria-label="עריכת ${esc(p.name)}">✎ עריכה</button></article>`).join('') || '<div class="empty">טרם נוספו מטופלים.</div>';
+  $('patient-list').innerHTML = state.patients.length?`<div class="session-table-wrap"><table class="session-table patients-table"><caption class="sr-only">מטופלים · פרטי קשר ותעריף לפגישה</caption><thead><tr><th scope="col">מטופל</th><th scope="col">טלפון</th><th scope="col">תעריף</th><th scope="col">עריכה</th></tr></thead><tbody>${state.patients.map(p=>`<tr><td class="name-cell">${esc(p.name)}<small class="patient-status">${esc(p.status)}</small></td><td class="patient-phone"><span dir="ltr">${esc(p.phone||'—')}</span></td><td class="amount-cell">${esc(money(p.rate))}</td><td class="patient-edit-cell"><button class="quiet patient-edit" data-edit-patient="${esc(p.id)}" aria-label="עריכת ${esc(p.name)}"><span aria-hidden="true">✎</span><span class="edit-label">עריכה</span></button></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">טרם נוספו מטופלים.</div>';
   renderAppointments();
   renderDocuments();
   view(state.view);
