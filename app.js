@@ -43,8 +43,8 @@ function setAppLoading(loading){
   $('app-shell').setAttribute('aria-busy',String(loading));
 }
 
-async function load() {
-  if (state.busy || state.loading) return;
+async function load(options={}) {
+  if (state.loading || (state.busy && !options.allowBusy)) return;
   const initialLoad=!state.loaded;
   if(initialLoad)setAppLoading(true);
   state.loading=true;
@@ -68,7 +68,7 @@ async function load() {
     state.selected = new Set(chosen().map(a => a.id));
     render();
     $('notice').hidden=true;
-    if(state.supportsTasks)await loadTasks();
+    if(state.supportsTasks&&options.includeTasks!==false)await loadTasks();
     if(state.tasksError)notice('נתוני הקליניקה נטענו, אך רענון המשימות לא הושלם. אפשר לנסות שוב דרך ההגדרות.',true);
   } catch (error) {
     // A failed read is not a logout. Only an explicit authentication failure invalidates access.
@@ -109,8 +109,6 @@ function renderCollection() {
   $('patient-filter').innerHTML = '<option value="">בחירת מטופל</option>' + state.patients.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
   $('patient-filter').value = state.patientId;
   const p = patient();
-  $('patient-meta').hidden = !p;
-  $('patient-meta').textContent = p ? `${p.phone || 'טלפון חסר'} · ${money(p.rate)} לפגישה` : '';
   if (!p) { $('appointment-groups').innerHTML = '<div class="empty">בחרו מטופל לצפייה בפגישות וביתרה שלו.</div>'; updateSelection(); return; }
   const apps = state.appointments.filter(a => a.patientId === p.id && !a.isPaid).sort((a,b) => a.date.localeCompare(b.date));
   const groups = [
@@ -377,21 +375,23 @@ $('pay-form').addEventListener('submit',async e=>{
   try{
     const result=await api('createMorningDoc',{...payload,requestId:attempt.requestId});
     attempt=null;sessionStorage.removeItem('THERAPAY_ATTEMPT');
-    $('pay-result').replaceChildren(document.createTextNode(result.emailRequested?'המסמך הופק ונשלח אל: '+(result.recipientEmails||[]).join(', ')+'.':'המסמך הופק אך לא נשלח במייל. '+(result.emailFailure||'לא התבקשה שליחת מייל')+'. ניתן לראות את המסמך בלשונית מסמכים.'));
-    const url=safeLink(result.pdfUrl);if(url){const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=' צפייה במסמך ↗';$('pay-result').append(a);}
-    const documentsButton=document.createElement('button');documentsButton.type='button';documentsButton.className='quiet';documentsButton.setAttribute('data-view','documents');documentsButton.setAttribute('data-close','');documentsButton.textContent='למסמכים ←';$('pay-result').append(documentsButton);
     state.appointments=applyIssuedDocument(state.appointments,payload.patientId,payload.ids,result);
-    state.connected=true;
-    state.loaded=true;
-    state.selected.clear();state.busy=false;
+    state.connected=true;state.loaded=true;state.selected.clear();
     render();
-    try{await load();}catch(error){notice(error.code==='AUTH'?'המסמך הופק. קוד הגישה נדחה בעת הרענון; יש להתחבר דרך ההגדרות.':'המסמך הופק והפגישות שנבחרו עודכנו. הרענון לא הושלם; החיבור נשמר ואפשר לרענן דרך ההגדרות.',true);}
-    $('issue').disabled=true;
+    let refreshWarning='';
+    try{await load({allowBusy:true,includeTasks:false});}catch(error){refreshWarning=error.code==='AUTH'?'קוד הגישה נדחה ברענון; יש להתחבר דרך ההגדרות.':'הרענון לא הושלם; החיבור נשמר ואפשר לרענן דרך ההגדרות.';}
+    // One completion point: stop progress, return to collection, then show the outcome.
+    state.busy=false;$('pay-progress').hidden=true;$('issue').disabled=true;
+    $('pay').close();view('collection');
+    const message=result.emailRequested?'המסמך הופק ונשלח אל: '+(result.recipientEmails||[]).join(', ')+'.':'המסמך הופק אך לא נשלח במייל. '+(result.emailFailure||'לא התבקשה שליחת מייל')+'. ניתן לראות את המסמך בלשונית מסמכים.';
+    notice(message+(refreshWarning?' '+refreshWarning:''),Boolean(refreshWarning));
+    const url=safeLink(result.pdfUrl);if(url){const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=' צפייה במסמך ↗';$('notice').append(a);}
+    const documentsButton=document.createElement('button');documentsButton.type='button';documentsButton.className='quiet';documentsButton.setAttribute('data-view','documents');documentsButton.textContent='למסמכים ←';$('notice').append(documentsButton);
   }catch(error){
     $('pay-result').textContent=error.message;
     if(error.code==='VALIDATION'||error.code==='MORNING_REJECTED'){attempt=null;sessionStorage.removeItem('THERAPAY_ATTEMPT');}
     $('issue').disabled=false;
-  }finally{state.busy=false;$('pay-progress').hidden=true;$('pay-form').removeAttribute('aria-busy');$('issue').textContent='הפקה ושליחה';updateSelection();}
+  }finally{state.busy=false;$('pay-progress').hidden=true;$('pay-form').removeAttribute('aria-busy');$('issue').textContent='הפקה ושליחה';updateSelection();renderTasks();}
 });
 
 if(demo){

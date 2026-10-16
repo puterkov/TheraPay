@@ -48,7 +48,7 @@ test('confirmed invoice success settles only selected sessions even when the fol
   assert.equal(f.run('state.connected'),true);assert.equal(f.run('state.appointments[0].isPaid'),true);assert.equal(f.run('state.appointments[1].isPaid'),false);
   assert.equal(f.run('state.appointments[0].docNumber'),'101');assert.equal(f.run('chosen().length'),0);
   assert.equal(f.sessionStorage.getItem('THERAPAY_ACCESS_TOKEN'),'fixture-access');assert.equal(f.sessionStorage.getItem('THERAPAY_ATTEMPT'),null);
-  assert.match(f.elements['pay-result'].textContent,/הופק/);assert.match(f.elements.notice.textContent,/החיבור נשמר/);
+  assert.match(f.elements.notice.textContent,/הופק/);assert.match(f.elements.notice.textContent,/החיבור נשמר/);
   assert.equal(f.calls.filter(c=>c.action==='createMorningDoc').length,1);
   f.queue.push(structuredClone(f.data));await f.run('load()');assert.equal(f.run('state.refreshFailed'),false);
 });
@@ -106,7 +106,7 @@ test('invoice shows progress until finished and a short sent confirmation after 
   const pending=f.elements['pay-form'].listeners.submit({preventDefault(){},target:f.elements['pay-form']});
   assert.equal(f.elements['pay-progress'].hidden,false);assert.equal(f.elements.issue.disabled,true);
   finish({success:true,apiVersion:2,docNumber:'101',emailRequested:true,recipientEmails:['test@example.com']});await pending;
-  assert.equal(f.elements['pay-progress'].hidden,true);assert.match(f.elements['pay-result'].textContent,/המסמך הופק ונשלח אל: test@example.com/);
+  assert.equal(f.elements['pay-progress'].hidden,true);assert.match(f.elements.notice.textContent,/המסמך הופק ונשלח אל: test@example.com/);assert.equal(f.run('state.view'),'collection');assert.equal(f.elements.pay.open,false);
 });
 
 test('editing fills existing details and submits the ID with original values and save spinner',async()=>{
@@ -191,7 +191,7 @@ test('missing email still settles the invoice and explains where to find it',asy
   const f=fixture();await f.connect();f.run('state.selected=new Set(["a1"])');f.elements['pay-form'].elements.paymentMethod.value='bit';f.elements['pay-form'].elements.paymentDate.value=domain.today();
   f.queue.push({success:true,apiVersion:2,docNumber:'101',pdfUrl:'https://example.com/doc.pdf',emailRequested:false,recipientEmails:[],emailFailure:'אין כתובת מייל'},new TypeError('refresh unavailable'));
   await f.elements['pay-form'].listeners.submit({preventDefault(){},target:f.elements['pay-form']});
-  assert.match(f.elements['pay-result'].textContent,/הופק אך לא נשלח/);assert.match(f.elements['pay-result'].textContent,/מסמכים/);assert.equal(f.run('state.appointments[0].isPaid'),true);assert.match(f.elements['document-list'].innerHTML,/101/);
+  assert.match(f.elements.notice.textContent,/הופק אך לא נשלח/);assert.match(f.elements.notice.textContent,/מסמכים/);assert.equal(f.run('state.appointments[0].isPaid'),true);assert.match(f.elements['document-list'].innerHTML,/101/);
   assert.equal(f.calls.filter(c=>c.action==='createMorningDoc').length,1);assert.equal(f.calls.find(c=>c.action==='createMorningDoc').deliveryMode,'auto');
 });
 test('pre-upgrade uncertain invoice preserves its original request fingerprint on retry',async()=>{
@@ -200,4 +200,15 @@ test('pre-upgrade uncertain invoice preserves its original request fingerprint o
   f.run('attempt='+JSON.stringify({fingerprint:JSON.stringify(prior),requestId:'original-request-1234'}));
   f.queue.push({success:false,apiVersion:2,code:'UNCERTAIN',message:'check Morning'});await form.listeners.submit({preventDefault(){},target:form});
   const sent=f.calls.at(-1);assert.equal(sent.requestId,'original-request-1234');assert.equal(sent.morningClientId,'M1');assert.equal(sent.deliveryMode,undefined);
+});
+
+test('invoice keeps a single spinner through refresh and announces success only after returning to collection',async()=>{
+  const f=fixture();await f.connect();f.run('state.selected=new Set(["a1"]);state.supportsTasks=true');
+  const form=f.elements['pay-form'];form.elements.paymentMethod.value='bit';form.elements.paymentDate.value=domain.today();
+  let finishRefresh;const data=structuredClone(f.data);data.supportsTasks=true;data.appointments[0].isPaid=true;data.appointments[0].docNumber='101';
+  f.queue.push({success:true,apiVersion:2,docNumber:'101',emailRequested:true,recipientEmails:['test@example.com']},new Promise(resolve=>{finishRefresh=resolve;}));
+  const pending=form.listeners.submit({preventDefault(){},target:form});await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(f.run('state.busy'),true);assert.equal(f.elements['pay-progress'].hidden,false);assert.equal(f.elements['pay-result'].textContent,'');assert.ok(!f.elements.notice.textContent.includes('הופק'));
+  await form.listeners.submit({preventDefault(){},target:form});assert.equal(f.calls.filter(c=>c.action==='createMorningDoc').length,1);
+  finishRefresh(data);await pending;assert.equal(f.elements['pay-progress'].hidden,true);assert.equal(f.elements.pay.open,false);assert.equal(f.run('state.view'),'collection');assert.match(f.elements.notice.textContent,/נשלח אל/);assert.equal(f.calls.filter(c=>c.action==='getTasks').length,0);
 });
