@@ -90,3 +90,16 @@ test('invalid task data is rejected and damaged task sheet does not block clinic
   const f=fixture();f.call('saveTask',{requestId:'task-valid-12345678',text:'test',dueDate:'',remindDays:0,completed:false});f.sheets.TheraPayTasks.rows[0][0]='broken';
   assert.equal(f.call('getTasks').success,false);assert.equal(f.call('getAllData').success,true);
 });
+
+test('automatic delivery issues once without sending when email is missing, invalid or disabled',()=>{
+  for(const change of [f=>f.clients[0].emails=[],f=>f.clients[0].emails=['invalid'],f=>f.clients[0].send=false]){
+    const f=fixture();change(f);const req={...f.req,deliveryMode:'auto'};delete req.morningClientId;delete req.recipientEmails;
+    const result=f.call('createMorningDoc',req);assert.equal(result.success,true);assert.equal(result.emailRequested,false);assert.ok(result.emailFailure);assert.deepEqual(f.documentPayload.client.emails,[]);assert.equal(f.documentPayload.attachment,false);assert.equal(f.documentPayload.client._emailFailure,undefined);
+    assert.equal(f.sheets.Appointments.rows[1][7],'101');assert.equal(f.call('createMorningDoc',req).emailRequested,false);assert.equal(f.documentCalls,1);
+  }
+});
+test('automatic delivery uses current registered email and still rejects ambiguous client ownership',()=>{
+  const f=fixture(),req={...f.req,deliveryMode:'auto'};delete req.morningClientId;delete req.recipientEmails;
+  f.clients[0].emails=['current@example.com'];const result=f.call('createMorningDoc',req);assert.equal(result.success,true);assert.deepEqual(result.recipientEmails,['current@example.com']);assert.equal(result.emailRequested,true);
+  const g=fixture();g.clients.push({...g.clients[0],id:'MORNING-2'});assert.equal(g.call('createMorningDoc',req).success,false);assert.equal(g.documentCalls,0);
+});

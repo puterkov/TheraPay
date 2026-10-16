@@ -3,8 +3,7 @@ import { today, money, taskReminderDate, actionableTasks, dashboardMetrics, vali
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const demo = new URLSearchParams(location.search).get('demo') === '1';
-const state = { patients:[], appointments:[], tasks:[], supportsTasks:false, tasksError:'', taskEdit:null, savingTaskId:null, patientId:'', month:today().slice(0,7), appointmentsPatient:'ALL', appointmentsMonth:'ALL', documentsPatient:'ALL', documentsMonth:'ALL', selected:new Set(), view:'dashboard', connected:false, loaded:false, loading:false, refreshFailed:false, environment:'sandbox', morningConfigured:false, emailDelivery:false, recipient:null, editing:{}, supportsEditing:false, busy:false };
-let recipientLookup=0;
+const state = { patients:[], appointments:[], tasks:[], supportsTasks:false, tasksError:'', taskEdit:null, savingTaskId:null, patientId:'', month:today().slice(0,7), appointmentsPatient:'ALL', appointmentsMonth:'ALL', documentsPatient:'ALL', documentsMonth:'ALL', selected:new Set(), view:'dashboard', connected:false, loaded:false, loading:false, refreshFailed:false, environment:'sandbox', morningConfigured:false, emailDelivery:false, optionalEmailDelivery:false, recipient:null, editing:{}, supportsEditing:false, busy:false };
 let attempt = readAttempt();
 function readAttempt() { try { return JSON.parse(sessionStorage.getItem('THERAPAY_ATTEMPT') || 'null'); } catch { return null; } }
 function notice(text, error = false) { $('notice').textContent = text; $('notice').hidden = false; $('notice').classList.toggle('error', error); }
@@ -63,7 +62,7 @@ async function load() {
     $('settings-result').textContent='';
     state.environment = data.environment;
     state.morningConfigured = data.morningConfigured;
-    state.emailDelivery = data.supportsEmailDelivery===true;state.supportsEditing=data.supportsEditing===true;
+    state.emailDelivery = data.supportsEmailDelivery===true;state.optionalEmailDelivery=data.supportsOptionalEmailDelivery===true;state.supportsEditing=data.supportsEditing===true;
     rememberAccess(accessToken(),localStorage.getItem('THERAPAY_REMEMBER')!=='false');
     if (!patient()) { state.patientId = state.patients[0]?.id || ''; resetSelection(); }
     state.selected = new Set(chosen().map(a => a.id));
@@ -248,18 +247,9 @@ async function showPayment() {
   $('pay-result').textContent='';$('pay-progress').hidden=true;
   state.recipient=null;
   $('pay-email').textContent='';$('pay-email').hidden=true;
-  $('pay-email-check').hidden=false;
-  $('issue').disabled=true;$('issue').textContent='הפקה ושליחה';
+  $('issue').disabled=!demo&&!state.optionalEmailDelivery;$('issue').textContent='הפקה ושליחה';
+  if(!demo&&!state.optionalEmailDelivery){$('pay-email').hidden=false;$('pay-email').textContent='יש לעדכן את Apps Script כדי להפיק מסמך גם ללא מייל.';}
   $('pay').showModal();
-  const lookup=++recipientLookup;
-  if(demo){$('pay-email-check').hidden=true;$('issue').disabled=false;return;}
-  if(!state.emailDelivery){$('pay-email-check').hidden=true;$('pay-email').hidden=false;$('pay-email').textContent='נדרש עדכון בקנד כדי להפיק ולשלוח למייל הרשום ב־Morning.';return;}
-  try{
-    const data=await api('getMorningRecipient',{patientId:state.patientId});if(lookup!==recipientLookup)return;
-    if(!data.recipient?.id||!Array.isArray(data.recipient.emails)||!data.recipient.emails.length)throw new Error('לא נמצאה כתובת מייל לשליחת המסמך.');
-    state.recipient=data.recipient;$('issue').disabled=false;
-  }catch(error){if(lookup===recipientLookup){$('pay-email').hidden=false;$('pay-email').textContent=error.message;}}
-  finally{if(lookup===recipientLookup)$('pay-email-check').hidden=true;}
 }
 
 document.addEventListener('click', event => {
@@ -375,9 +365,11 @@ $('pay-form').addEventListener('submit',async e=>{
   e.preventDefault();if(state.busy||state.loading||!chosen().length)return;
   if(demo){$('pay-result').textContent='הדגמה בלבד · כאן תופק חשבונית מס־קבלה. לא בוצעה הנפקה.';return;}
   if(!state.morningConfigured){$('pay-result').textContent='מפתחות Morning טרם הוגדרו בבקנד.';return;}
-  if(!state.emailDelivery||!state.recipient){$('pay-result').textContent='יש לבדוק את כתובת המייל ב־Morning לפני ההפקה.';return;}
+  if(!state.optionalEmailDelivery){$('pay-result').textContent='יש לעדכן את Apps Script לפני ההפקה.';return;}
   const f=e.target;const payload={patientId:state.patientId,ids:chosen().map(a=>a.id).sort(),amount:total(chosen()),paymentMethod:f.elements.paymentMethod.value,paymentDate:f.elements.paymentDate.value};
-  payload.morningClientId=state.recipient.id;payload.recipientEmails=state.recipient.emails;
+  payload.deliveryMode='auto';
+  // Preserve a pre-upgrade request exactly so an uncertain invoice is never reissued.
+  if(attempt){try{const prior=JSON.parse(attempt.fingerprint);if(prior.morningClientId&&!prior.deliveryMode&&['patientId','ids','amount','paymentMethod','paymentDate'].every(key=>JSON.stringify(prior[key])===JSON.stringify(payload[key]))){delete payload.deliveryMode;payload.morningClientId=prior.morningClientId;payload.recipientEmails=prior.recipientEmails;}}catch{}}
   const fingerprint=JSON.stringify(payload);
   if(attempt && attempt.fingerprint!==fingerprint){$('pay-result').textContent='קיימת בקשת הפקה קודמת שטרם אושרה. חזרו לאותה בחירה ולאותו תאריך ואמצעי תשלום, או בדקו את Morning ואת יומן הבקשות לפני איפוס ידני.';return;}
   if(!attempt){attempt={fingerprint,requestId:uuid()};sessionStorage.setItem('THERAPAY_ATTEMPT',JSON.stringify(attempt));}
@@ -385,8 +377,9 @@ $('pay-form').addEventListener('submit',async e=>{
   try{
     const result=await api('createMorningDoc',{...payload,requestId:attempt.requestId});
     attempt=null;sessionStorage.removeItem('THERAPAY_ATTEMPT');
-    $('pay-result').replaceChildren(document.createTextNode(result.emailRequested?'המסמך הופק ונשלח.':'המסמך הופק.'));
+    $('pay-result').replaceChildren(document.createTextNode(result.emailRequested?'המסמך הופק ונשלח אל: '+(result.recipientEmails||[]).join(', ')+'.':'המסמך הופק אך לא נשלח במייל. '+(result.emailFailure||'לא התבקשה שליחת מייל')+'. ניתן לראות את המסמך בלשונית מסמכים.'));
     const url=safeLink(result.pdfUrl);if(url){const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=' צפייה במסמך ↗';$('pay-result').append(a);}
+    const documentsButton=document.createElement('button');documentsButton.type='button';documentsButton.className='quiet';documentsButton.setAttribute('data-view','documents');documentsButton.setAttribute('data-close','');documentsButton.textContent='למסמכים ←';$('pay-result').append(documentsButton);
     state.appointments=applyIssuedDocument(state.appointments,payload.patientId,payload.ids,result);
     state.connected=true;
     state.loaded=true;

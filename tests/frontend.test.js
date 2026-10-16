@@ -23,7 +23,7 @@ function fixture(){
     fetch:async(url,options)=>{calls.push(JSON.parse(options.body));const result=await queue.shift();if(result instanceof Error)throw result;if(!result)throw Error('Unexpected request');return {ok:true,json:async()=>result};}
   };
   vm.createContext(context);vm.runInContext(source,context);sessionStorage.setItem('THERAPAY_ACCESS_TOKEN','fixture-access');
-  const data={success:true,apiVersion:2,environment:'sandbox',morningConfigured:true,supportsEmailDelivery:true,supportsEditing:true,patients:[{id:'p1',name:'בדיקה',phone:'0541234567',rate:350,status:'פעיל'}],appointments:[{id:'a1',patientId:'p1',clientName:'בדיקה',date:'2020-01-01',amount:350,isPaid:false},{id:'a2',patientId:'p1',clientName:'בדיקה',date:'2020-01-02',amount:350,isPaid:false}]};
+  const data={success:true,apiVersion:2,environment:'sandbox',morningConfigured:true,supportsEmailDelivery:true,supportsOptionalEmailDelivery:true,supportsEditing:true,patients:[{id:'p1',name:'בדיקה',phone:'0541234567',rate:350,status:'פעיל'}],appointments:[{id:'a1',patientId:'p1',clientName:'בדיקה',date:'2020-01-01',amount:350,isPaid:false},{id:'a2',patientId:'p1',clientName:'בדיקה',date:'2020-01-02',amount:350,isPaid:false}]};
   const run=code=>vm.runInContext(code,context);
   return {context,sessionStorage,localStorage,elements,queue,calls,data,run,async connect(){queue.push(structuredClone(data));await run('load()');}};
 }
@@ -74,8 +74,8 @@ test('appointment filters combine patient and named month/year and survive refre
 });
 test('remembered access survives closing the tab session and explicit logout removes it',async()=>{const f=fixture();await f.connect();assert.equal(f.localStorage.getItem('THERAPAY_ACCESS_TOKEN'),'fixture-access');f.sessionStorage.removeItem('THERAPAY_ACCESS_TOKEN');assert.equal(f.run('accessToken()'),'fixture-access');f.elements.disconnect.listeners.click();assert.equal(f.run('accessToken()'),'');});
 test('remember opt-out uses only tab storage and authentication rejection clears both stores',async()=>{const f=fixture();f.localStorage.setItem('THERAPAY_REMEMBER','false');await f.connect();assert.equal(f.localStorage.getItem('THERAPAY_ACCESS_TOKEN'),null);assert.equal(f.run('accessToken()'),'fixture-access');f.run('rememberAccess("remembered-access",true)');f.queue.push({success:false,apiVersion:2,code:'AUTH',message:'קוד שגוי'});await assert.rejects(f.run('load()'));assert.equal(f.run('accessToken()'),'');});
-test('opening payment reads the registered recipient before enabling issuance',async()=>{const f=fixture();await f.connect();f.queue.push({success:true,apiVersion:2,recipient:{id:'MORNING-1',emails:['invoice@example.com']}});await f.run('showPayment()');assert.equal(f.run('state.recipient.id'),'MORNING-1');assert.equal(f.elements['pay-email'].hidden,true);assert.equal(f.elements['pay-email-check'].hidden,true);assert.equal(f.elements.issue.disabled,false);assert.equal(f.calls.filter(c=>c.action==='createMorningDoc').length,0);});
-test('old backend without mail capability cannot silently issue an unsent invoice',async()=>{const f=fixture();f.data.supportsEmailDelivery=false;await f.connect();await f.run('showPayment()');assert.equal(f.elements.issue.disabled,true);assert.match(f.elements['pay-email'].textContent,/עדכון בקנד/);assert.equal(f.calls.filter(c=>c.action==='createMorningDoc').length,0);});
+test('opening payment performs no recipient lookup and enables the single issuance action',async()=>{const f=fixture();await f.connect();await f.run('showPayment()');assert.equal(f.elements.issue.disabled,false);assert.equal(f.elements['pay-email'].hidden,true);assert.equal(f.calls.filter(c=>c.action==='getMorningRecipient').length,0);});
+test('old backend requires upgrade before allowing the new delivery flow',async()=>{const f=fixture();f.data.supportsOptionalEmailDelivery=false;await f.connect();await f.run('showPayment()');assert.equal(f.elements.issue.disabled,true);assert.match(f.elements['pay-email'].textContent,/Apps Script/);});
 
 test('successful connection leaves settings, while failed connection stays there',async()=>{
   const f=fixture();const form=f.elements['settings-form'];
@@ -106,7 +106,7 @@ test('invoice shows progress until finished and a short sent confirmation after 
   const pending=f.elements['pay-form'].listeners.submit({preventDefault(){},target:f.elements['pay-form']});
   assert.equal(f.elements['pay-progress'].hidden,false);assert.equal(f.elements.issue.disabled,true);
   finish({success:true,apiVersion:2,docNumber:'101',emailRequested:true,recipientEmails:['test@example.com']});await pending;
-  assert.equal(f.elements['pay-progress'].hidden,true);assert.equal(f.elements['pay-result'].textContent,'המסמך הופק ונשלח.');
+  assert.equal(f.elements['pay-progress'].hidden,true);assert.match(f.elements['pay-result'].textContent,/המסמך הופק ונשלח אל: test@example.com/);
 });
 
 test('editing fills existing details and submits the ID with original values and save spinner',async()=>{
@@ -187,11 +187,17 @@ test('initial load failure always releases loader and displays an error for retr
   assert.equal(f.elements['app-loader'].hidden,true);assert.equal(f.elements['app-shell'].hidden,false);assert.match(f.elements.notice.textContent,/שרת לא זמין/);assert.equal(f.elements.refresh.disabled,false);
 });
 
-test('recipient check shows a spinner and keeps issue disabled until a usable email is found',async()=>{
-  const f=fixture();await f.connect();let finish;f.queue.push(new Promise(resolve=>{finish=resolve;}));
-  const pending=f.run('showPayment()');assert.equal(f.elements.issue.disabled,true);assert.equal(f.elements['pay-email-check'].hidden,false);
-  finish({success:true,apiVersion:2,recipient:{id:'M1',emails:[]}});await pending;
-  assert.equal(f.elements.issue.disabled,true);assert.equal(f.elements['pay-email-check'].hidden,true);assert.equal(f.elements['pay-email'].hidden,false);
-  f.queue.push({success:true,apiVersion:2,recipient:{id:'M1',emails:['invoice@example.com']}});await f.run('showPayment()');
-  assert.equal(f.elements.issue.disabled,false);assert.equal(f.elements['pay-email-check'].hidden,true);assert.equal(f.elements['pay-email'].hidden,true);
+test('missing email still settles the invoice and explains where to find it',async()=>{
+  const f=fixture();await f.connect();f.run('state.selected=new Set(["a1"])');f.elements['pay-form'].elements.paymentMethod.value='bit';f.elements['pay-form'].elements.paymentDate.value=domain.today();
+  f.queue.push({success:true,apiVersion:2,docNumber:'101',pdfUrl:'https://example.com/doc.pdf',emailRequested:false,recipientEmails:[],emailFailure:'אין כתובת מייל'},new TypeError('refresh unavailable'));
+  await f.elements['pay-form'].listeners.submit({preventDefault(){},target:f.elements['pay-form']});
+  assert.match(f.elements['pay-result'].textContent,/הופק אך לא נשלח/);assert.match(f.elements['pay-result'].textContent,/מסמכים/);assert.equal(f.run('state.appointments[0].isPaid'),true);assert.match(f.elements['document-list'].innerHTML,/101/);
+  assert.equal(f.calls.filter(c=>c.action==='createMorningDoc').length,1);assert.equal(f.calls.find(c=>c.action==='createMorningDoc').deliveryMode,'auto');
+});
+test('pre-upgrade uncertain invoice preserves its original request fingerprint on retry',async()=>{
+  const f=fixture();await f.connect();f.run('state.selected=new Set(["a1"])');const form=f.elements['pay-form'];form.elements.paymentMethod.value='bit';form.elements.paymentDate.value=domain.today();
+  const prior={patientId:'p1',ids:['a1'],amount:350,paymentMethod:'bit',paymentDate:domain.today(),morningClientId:'M1',recipientEmails:['old@example.com']};
+  f.run('attempt='+JSON.stringify({fingerprint:JSON.stringify(prior),requestId:'original-request-1234'}));
+  f.queue.push({success:false,apiVersion:2,code:'UNCERTAIN',message:'check Morning'});await form.listeners.submit({preventDefault(){},target:form});
+  const sent=f.calls.at(-1);assert.equal(sent.requestId,'original-request-1234');assert.equal(sent.morningClientId,'M1');assert.equal(sent.deliveryMode,undefined);
 });

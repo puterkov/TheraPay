@@ -59,7 +59,7 @@ function appointments_(patients){
   });unique_(list,'פגישות');return {table:t,list:list};
 }
 function environment_(){var env=PropertiesService.getScriptProperties().getProperty('MORNING_ENV')||'sandbox';if(env!=='sandbox'&&env!=='production')fail_('MORNING_ENV חייב להיות sandbox או production.');return env;}
-function readData_(){var p=patients_();var a=appointments_(p).list;var props=PropertiesService.getScriptProperties();return {success:true,supportsTasks:true,supportsEditing:true,supportsEmailDelivery:true,patients:p,appointments:a.map(function(x){var copy=Object.assign({},x);delete copy._row;return copy;}),environment:environment_(),morningConfigured:!!(props.getProperty('MORNING_API_KEY')&&props.getProperty('MORNING_API_SECRET'))};}
+function readData_(){var p=patients_();var a=appointments_(p).list;var props=PropertiesService.getScriptProperties();return {success:true,supportsTasks:true,supportsOptionalEmailDelivery:true,supportsEditing:true,supportsEmailDelivery:true,patients:p,appointments:a.map(function(x){var copy=Object.assign({},x);delete copy._row;return copy;}),environment:environment_(),morningConfigured:!!(props.getProperty('MORNING_API_KEY')&&props.getProperty('MORNING_API_SECRET'))};}
 function literal_(value){var s=text_(value);return /^[=+@\-]/.test(s)?"'"+s:s;}
 function append_(t,obj){var row=t.headers.map(function(){return '';});Object.keys(obj).forEach(function(key){if(t.cols[key]>=0)row[t.cols[key]]=obj[key];});t.sheet.appendRow(row);SpreadsheetApp.flush();}
 function ensurePatientIdColumn_(t){if(t.cols.patientId<0){t.cols.patientId=t.headers.length;t.headers.push('מזהה מטופל');t.sheet.getRange(1,t.headers.length).setValue('מזהה מטופל');}}
@@ -169,19 +169,20 @@ function morningRecipient_(patient,token,env){
   if(!/^[a-zA-Z0-9-]+$/.test(id||''))fail_('מזהה לקוח Morning אינו תקין.');
   var client=morningRead_(env,token,'/clients/'+encodeURIComponent(id));
   if(client.id!==id||client.active===false)fail_('לקוח Morning אינו פעיל או אינו תואם למזהה שנבחר.');
-  if(client.send===false)fail_('שליחה אוטומטית של מסמכים כבויה בכרטיס הלקוח ב־Morning. יש להפעיל אותה לפני הפקה.');
   var emails=Array.isArray(client.emails)?client.emails.map(text_).filter(Boolean):[];
-  if(!emails.length||emails.some(function(email){return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);}))fail_('חסרה כתובת מייל תקינה בכרטיס הלקוח ב־Morning. יש לעדכן אותה לפני הפקה.');
-  var out={id:client.id,name:client.name,emails:emails,add:false};
+  var reason=client.send===false?'שליחת מייל כבויה בכרטיס הלקוח ב־Morning':!emails.length?'אין כתובת מייל בכרטיס הלקוח ב־Morning':emails.some(function(email){return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);})?'כתובת המייל בכרטיס הלקוח אינה תקינה':'';
+  if(reason)emails=[];
+  var out={id:client.id,name:client.name,emails:emails,add:false,_emailFailure:reason};
   ['taxId','address','city','zip','country','phone','mobile'].forEach(function(key){if(client[key])out[key]=client[key];});
   return out;
 }
-function recipientPreview_(req){var patient=patients_().filter(function(p){return p.id===req.patientId;})[0];if(!patient)fail_('המטופל לא נמצא.');var env=environment_();var client=morningRecipient_(patient,morningToken_(env),env);return {success:true,recipient:{id:client.id,name:client.name,emails:client.emails},environment:env};}
+function recipientPreview_(req){var patient=patients_().filter(function(p){return p.id===req.patientId;})[0];if(!patient)fail_('המטופל לא נמצא.');var env=environment_();var client=morningRecipient_(patient,morningToken_(env),env);return {success:true,recipient:{id:client.id,name:client.name,emails:client.emails,emailFailure:client._emailFailure},environment:env};}
 function issueDocument_(req){
   var env=environment_();if(req.isDraft)fail_('תשלום נרשם רק באמצעות מסמך סופי.');
   if(!Array.isArray(req.ids)||!req.ids.length)fail_('יש לבחור פגישות שלמות לתשלום.');
   if(!validDate_(req.paymentDate)||req.paymentDate>today_())fail_('תאריך קבלת התשלום אינו תקין.');
   var fpData=['createMorningDoc',req.patientId,(req.ids||[]).slice().sort(),req.amount,req.paymentMethod,req.paymentDate,env];
+  if(req.deliveryMode==='auto')fpData.push('auto');
   if(req.morningClientId)fpData.push(req.morningClientId,req.recipientEmails);
   var fp=fingerprint_(fpData);
   var rec=request_(req,fp);
@@ -189,14 +190,16 @@ function issueDocument_(req){
   if(rec.status==='pending'||rec.status==='unknown')fail_('מצב ההנפקה אינו ודאי. יש לבדוק את Morning ואת יומן _TheraPayRequests. לא נשלחה בקשת הנפקה נוספת.','UNCERTAIN');
   if(rec.status==='rejected')fail_('בקשה זו נדחתה על ידי Morning. יש לתקן את הפרטים וליצור בקשה חדשה.','MORNING_REJECTED');
   var selection=selected_(req,false);var payment=payment_(req.paymentMethod,selection.amount,req.paymentDate);var token=morningToken_(env);
-  if(!req.morningClientId||!Array.isArray(req.recipientEmails))fail_('יש לעדכן את הממשק ולבדוק את כתובת המייל לפני הפקה.');
+  if(req.deliveryMode!=='auto'&&(!req.morningClientId||!Array.isArray(req.recipientEmails)))fail_('יש לעדכן את הממשק ולבדוק את כתובת המייל לפני הפקה.');
   var recipient=morningRecipient_(selection.patient,token,env);
-  if(req.morningClientId!==recipient.id||JSON.stringify(req.recipientEmails.slice().sort())!==JSON.stringify(recipient.emails.slice().sort()))fail_('פרטי המייל ב־Morning השתנו. פתחו מחדש את חלון התשלום ובדקו את הנמען.');
+  if(req.deliveryMode!=='auto'&&(req.morningClientId!==recipient.id||JSON.stringify(req.recipientEmails.slice().sort())!==JSON.stringify(recipient.emails.slice().sort())))fail_('פרטי המייל ב־Morning השתנו. פתחו מחדש את חלון התשלום ובדקו את הנמען.');
+  var emailFailure=recipient._emailFailure;delete recipient._emailFailure;
+  if(req.deliveryMode!=='auto'&&emailFailure)fail_('נדרש עדכון הממשק להפקה ללא שליחת מייל.');
   // Reserve every selected appointment across request IDs before contacting Morning.
   var journalRows=rec.sheet.getDataRange().getValues();
   journalRows.slice(1).forEach(function(row){if(row[0]===req.requestId||['pending','unknown','issued'].indexOf(row[2])<0)return;var saved=row[3]?JSON.parse(row[3]):null;if(saved&&saved.ids&&selection.apps.some(function(a){return saved.ids.indexOf(a.id)>=0;}))fail_('קיימת בקשת הפקה קודמת עבור אחת הפגישות. יש להשלים את הבירור לפני הפקה נוספת.','UNCERTAIN');});
   var reservation={ids:selection.apps.map(function(a){return a.id;}),patientId:selection.patient.id};
-  var payload={type:320,lang:'he',currency:'ILS',vatType:0,signed:true,attachment:true,date:today_(),client:recipient,income:selection.apps.map(function(a){return {description:'טיפול בקליניקה בתאריך '+a.date,quantity:1,price:a.amount,vatType:1,currency:'ILS'};}),payment:[payment.object]};
+  var payload={type:320,lang:'he',currency:'ILS',vatType:0,signed:true,attachment:recipient.emails.length>0,date:today_(),client:recipient,income:selection.apps.map(function(a){return {description:'טיפול בקליניקה בתאריך '+a.date,quantity:1,price:a.amount,vatType:1,currency:'ILS'};}),payment:[payment.object]};
   record_(rec,req,fp,'pending',reservation);
   var response;
   try{response=UrlFetchApp.fetch((env==='sandbox'?'https://sandbox.d.greeninvoice.co.il':'https://api.greeninvoice.co.il')+'/api/v1/documents',{method:'post',contentType:'application/json',headers:{Authorization:'Bearer '+token},payload:JSON.stringify(payload),muteHttpExceptions:true});}
@@ -205,7 +208,7 @@ function issueDocument_(req){
   try{doc=JSON.parse(response.getContentText());}catch(e){record_(rec,req,fp,'unknown',reservation);fail_('התקבלה תשובה לא תקינה מ־Morning. נדרש בירור לפני ניסיון נוסף.','UNCERTAIN');}
   if(code>=400&&code<500&&code!==408&&!doc.id){record_(rec,req,fp,'rejected',reservation);fail_('Morning: '+(doc.errorMessage||doc.message||'המסמך נדחה. בדקו את פרטי התשלום.'),'MORNING_REJECTED');}
   if(code<200||code>=300||!doc.id||!doc.number){record_(rec,req,fp,'unknown',reservation);fail_('מצב המסמך ב־Morning אינו ודאי. נדרש בירור לפני ניסיון נוסף.','UNCERTAIN');}
-  var result={success:true,docId:doc.id,docNumber:String(doc.number),pdfUrl:doc.url?(typeof doc.url==='string'?doc.url:doc.url.he||''):'',paymentLabel:payment.label,environment:env,ids:reservation.ids,emailRequested:true,recipientEmails:recipient.emails};
+  var result={success:true,docId:doc.id,docNumber:String(doc.number),pdfUrl:doc.url?(typeof doc.url==='string'?doc.url:doc.url.he||''):'',paymentLabel:payment.label,environment:env,ids:reservation.ids,emailRequested:recipient.emails.length>0,recipientEmails:recipient.emails,emailFailure:emailFailure};
   // Persist the remote success BEFORE writing paid status. Retrying only repairs Sheets.
   record_(rec,req,fp,'issued',result);syncIssued_(result,selection);record_(rec,req,fp,'done',result);return result;
 }
