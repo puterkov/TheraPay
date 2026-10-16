@@ -6,7 +6,22 @@ const demo = new URLSearchParams(location.search).get('demo') === '1';
 const state = { patients:[], appointments:[], tasks:[], supportsTasks:false, tasksError:'', taskEdit:null, savingTaskId:null, patientId:'', month:today().slice(0,7), appointmentsPatient:'ALL', appointmentsMonth:'ALL', documentsPatient:'ALL', documentsMonth:'ALL', selected:new Set(), view:'dashboard', connected:false, loaded:false, loading:false, refreshFailed:false, environment:'sandbox', morningConfigured:false, emailDelivery:false, optionalEmailDelivery:false, recipient:null, editing:{}, supportsEditing:false, busy:false };
 let attempt = readAttempt();
 function readAttempt() { try { return JSON.parse(sessionStorage.getItem('THERAPAY_ATTEMPT') || 'null'); } catch { return null; } }
-function notice(text, error = false) { $('notice').textContent = text; $('notice').hidden = false; $('notice').classList.toggle('error', error); }
+function notice(text, error = false) { $('notice').classList.toggle('invoice-notice',false);$('notice').classList.toggle('invoice-unsent',false);$('notice').textContent = text; $('notice').hidden = false; $('notice').classList.toggle('error', error); }
+function showInvoiceOutcome(result,refreshWarning=''){
+  notice('',false);const panel=$('notice');panel.classList.toggle('invoice-notice',true);panel.classList.toggle('invoice-unsent',!result.emailRequested);
+  const node=(tag,className,text)=>{const el=document.createElement(tag);el.className=className;if(text)el.textContent=text;return el;};
+  const head=node('div','invoice-head'),icon=node('span','invoice-outcome-icon',result.emailRequested?'✓':'!');icon.setAttribute('aria-hidden','true');
+  const title=node('h2','',result.emailRequested?'המסמך הופק ונשלח':'המסמך הופק אך לא נשלח במייל');
+  const dismiss=node('button','quiet invoice-dismiss','×');dismiss.type='button';dismiss.setAttribute('aria-label','סגירת הודעה');dismiss.setAttribute('data-dismiss-notice','');
+  head.append(icon);head.append(title);head.append(dismiss);panel.append(head);
+  panel.append(node('p','invoice-reference','חשבונית מס־קבלה מס׳ '+result.docNumber));
+  if(result.emailRequested){const recipient=node('p','invoice-recipient','נשלח אל: ');const email=node('strong','',(result.recipientEmails||[]).join(', '));email.dir='ltr';recipient.append(email);panel.append(recipient);}
+  else panel.append(node('p','invoice-reason',(result.emailFailure||'לא התבקשה שליחת מייל')+'. ניתן לראות את המסמך בלשונית מסמכים.'));
+  if(refreshWarning)panel.append(node('p','invoice-refresh-warning',refreshWarning));
+  const actions=node('div','invoice-actions'),url=safeLink(result.pdfUrl);
+  if(url){const link=node('a','button secondary','צפייה במסמך ↗');link.href=url;link.target='_blank';link.rel='noopener noreferrer';actions.append(link);}
+  const documents=node('button','quiet','לכל המסמכים ←');documents.type='button';documents.setAttribute('data-view','documents');actions.append(documents);panel.append(actions);
+}
 function patient() { return state.patients.find(p => p.id === state.patientId); }
 function chosen() { return selectedAppointments(state.appointments, state.selected, state.patientId); }
 function apiUrl() { return localStorage.getItem('APPS_SCRIPT_URL') || 'https://script.google.com/macros/s/AKfycbwQbZlqV_kHG6IaffOtnoJ7x1ufiWa9Z9rFJs7eUaLO1hc-d1-4l2WeiEBaZFCn5uq5aA/exec'; }
@@ -251,6 +266,7 @@ async function showPayment() {
 }
 
 document.addEventListener('click', event => {
+  if(event.target.closest('[data-dismiss-notice]'))$('notice').hidden=true;
   const editPatient=event.target.closest('[data-edit-patient]');if(editPatient)editRecord('patient',editPatient.dataset.editPatient);
   const editAppointment=event.target.closest('[data-edit-appointment]');if(editAppointment)editRecord('appointment',editAppointment.dataset.editAppointment);
   const editTask=event.target.closest('[data-edit-task]');if(editTask)openTask(editTask.dataset.editTask);
@@ -383,10 +399,7 @@ $('pay-form').addEventListener('submit',async e=>{
     // One completion point: stop progress, return to collection, then show the outcome.
     state.busy=false;$('pay-progress').hidden=true;$('issue').disabled=true;
     $('pay').close();view('collection');
-    const message=result.emailRequested?'המסמך הופק ונשלח אל: '+(result.recipientEmails||[]).join(', ')+'.':'המסמך הופק אך לא נשלח במייל. '+(result.emailFailure||'לא התבקשה שליחת מייל')+'. ניתן לראות את המסמך בלשונית מסמכים.';
-    notice(message+(refreshWarning?' '+refreshWarning:''),Boolean(refreshWarning));
-    const url=safeLink(result.pdfUrl);if(url){const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=' צפייה במסמך ↗';$('notice').append(a);}
-    const documentsButton=document.createElement('button');documentsButton.type='button';documentsButton.className='quiet';documentsButton.setAttribute('data-view','documents');documentsButton.textContent='למסמכים ←';$('notice').append(documentsButton);
+    showInvoiceOutcome(result,refreshWarning);
   }catch(error){
     $('pay-result').textContent=error.message;
     if(error.code==='VALIDATION'||error.code==='MORNING_REJECTED'){attempt=null;sessionStorage.removeItem('THERAPAY_ATTEMPT');}

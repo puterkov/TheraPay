@@ -106,7 +106,7 @@ test('invoice shows progress until finished and a short sent confirmation after 
   const pending=f.elements['pay-form'].listeners.submit({preventDefault(){},target:f.elements['pay-form']});
   assert.equal(f.elements['pay-progress'].hidden,false);assert.equal(f.elements.issue.disabled,true);
   finish({success:true,apiVersion:2,docNumber:'101',emailRequested:true,recipientEmails:['test@example.com']});await pending;
-  assert.equal(f.elements['pay-progress'].hidden,true);assert.match(f.elements.notice.textContent,/המסמך הופק ונשלח אל: test@example.com/);assert.equal(f.run('state.view'),'collection');assert.equal(f.elements.pay.open,false);
+  assert.equal(f.elements['pay-progress'].hidden,true);assert.match(f.elements.notice.textContent,/המסמך הופק ונשלח/);assert.match(f.elements.notice.textContent,/test@example.com/);assert.equal(f.run('state.view'),'collection');assert.equal(f.elements.pay.open,false);
 });
 
 test('editing fills existing details and submits the ID with original values and save spinner',async()=>{
