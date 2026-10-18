@@ -2,9 +2,35 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import {backendFiles,provisionWorkspace} from '../onboarding/google.js';
+import {backendFiles,provisionWorkspace,googleRequest,workspaceProperties} from '../onboarding/google.js';
 const core=fs.readFileSync(new URL('../apps-script/Code.gs',import.meta.url),'utf8');
 const bootstrap=fs.readFileSync(new URL('../distribution/ClinicBootstrap.gs',import.meta.url),'utf8');
+
+test('Google failures identify the failed operation without exposing submitted data or quoted source',async()=>{
+ const privateText='bootstrap-token-and-private-user-name';
+ await assert.rejects(googleRequest('private-google-token','https://sheets.googleapis.com/v4/spreadsheets',{method:'POST',body:{properties:{title:privateText}},fetchImpl:async()=>({ok:false,status:400,json:async()=>({error:{status:'INVALID_ARGUMENT',message:privateText,details:[{fieldViolations:[{field:'properties.locale',description:privateText}]}]}})})}),error=>{
+  assert.match(error.message,/יצירת גיליון פרטי/);assert.match(error.message,/400.*INVALID_ARGUMENT.*properties.locale/);assert.ok(!error.message.includes(privateText));assert.ok(!error.message.includes('private-google-token'));return true;
+ });
+ await assert.rejects(googleRequest('token','https://script.googleapis.com/v1/projects/P1/content',{method:'PUT',fetchImpl:async()=>({ok:false,status:400,json:async()=>({error:{status:privateText,message:privateText}})})}),error=>{assert.match(error.message,/שמירת קוד הבקנד/);assert.ok(!error.message.includes(privateText));return true;});
+});
+
+test('real deployment URLs fit Drive property limits and survive resumable workspace discovery',async()=>{
+ const deploymentId='AKfycb'+ 'x'.repeat(82),backendUrl='https://script.google.com/macros/s/'+deploymentId+'/exec';
+ const props=workspaceProperties({scriptId:'s'.repeat(58),deploymentId,backendUrl});
+ for(const [key,value] of Object.entries(props))assert.ok(Buffer.byteLength(key+value,'utf8')<=124,key+' exceeds Drive property limit');
+ let created=false;
+ const result=await provisionWorkspace({token:'token',ownerEmail:'owner@example.com',clinicName:'Clinic',core,bootstrap,request:async(t,url,opt={})=>{
+  if(url.includes('/drive/v3/files?q='))return {files:[{id:'S1',appProperties:props}]};
+  if(url.includes('/drive/v3/files/S1?'))return {appProperties:props};
+  if(url.includes('values:batchGet'))return {valueRanges:[{},{}]};
+  if(url.includes('values:batchUpdate'))return {};
+  if(url.endsWith('/projects/'+props.therapayScriptId))return {parentId:'S1'};
+  if(url.endsWith('/content'))return {files:[{name:'OnboardingBootstrap',source:'var PILOT_BOOTSTRAP = '+JSON.stringify({ownerEmail:'owner@example.com',spreadsheetId:'S1',bootstrapSecret:'recovered-private-secret'})+';\n'}]};
+  if(opt.method==='POST')created=true;
+  throw new Error('Unexpected '+url);
+ }});
+ assert.equal(result.backendUrl,backendUrl);assert.equal(result.deploymentId,deploymentId);assert.equal(created,false);
+});
 test('generated backend contains no user Morning keys and uses only the specified owner spreadsheet',()=>{
  const files=backendFiles(core,bootstrap,{ownerEmail:'owner@example.com',spreadsheetId:'S1',bootstrapSecret:'bootstrap-only',registryUrl:'https://script.google.com/macros/s/REGISTRY/exec'});
  assert.equal(files.length,3);assert.match(files[0].source,/function clinicDoPost/);assert.ok(!files[0].source.includes('function doPost('));assert.match(files[1].source,/"spreadsheetId":"S1"/);

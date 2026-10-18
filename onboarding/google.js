@@ -1,10 +1,34 @@
 import {resumableMetadata} from './model.js';
 export const GOOGLE_SCOPES=['openid','email','profile','https://www.googleapis.com/auth/drive.file','https://www.googleapis.com/auth/script.projects','https://www.googleapis.com/auth/script.deployments'];
 export function randomSecret(){const bytes=crypto.getRandomValues(new Uint8Array(32));return [...bytes].map(b=>b.toString(16).padStart(2,'0')).join('');}
+function googleOperation(path,method){
+  const {hostname,pathname}=new URL(path);
+  if(hostname==='www.googleapis.com')return method==='PATCH'?'שמירת פרטי ההקמה ב־Drive':pathname.endsWith('/files')?'חיפוש הקמה קודמת ב־Drive':'בדיקת גיליון ב־Drive';
+  if(hostname==='sheets.googleapis.com')return pathname.endsWith('/spreadsheets')?'יצירת גיליון פרטי':pathname.includes('batchUpdate')?'יצירת כותרות הגיליון':'קריאת כותרות הגיליון';
+  if(pathname.endsWith('/content'))return method==='PUT'?'שמירת קוד הבקנד':'קריאת קוד הבקנד';
+  if(pathname.endsWith('/deployments'))return method==='POST'?'פריסת הבקנד':'בדיקת פריסות קיימות';
+  if(pathname.endsWith('/versions'))return 'יצירת גרסת בקנד';
+  return method==='POST'?'יצירת פרויקט Apps Script':'בדיקת פרויקט Apps Script';
+}
+function googleErrorCode(data){
+  // Return only diagnostic enums/field paths, never arbitrary Google messages:
+  // validation errors may quote submitted source code, names or bootstrap credentials.
+  const status=String(data?.error?.status||'');
+  const reason=String(data?.error?.errors?.[0]?.reason||'');
+  const codes=[status,reason].filter(v=>/^[A-Za-z_]{2,60}$/.test(v));
+  const fields=(data?.error?.details||[]).flatMap(d=>d.fieldViolations||[]).map(v=>String(v.field||'')).filter(v=>/^[a-zA-Z][a-zA-Z0-9_.\[\]]{0,90}$/.test(v));
+  return [...new Set([...codes,...fields])].join(' · ');
+}
 export async function googleRequest(token,path,{method='GET',body,fetchImpl=fetch}={}){
   const response=await fetchImpl(path,{method,headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
   let data;try{data=await response.json();}catch{throw new Error('Google החזיר תשובה לא תקינה');}
-  if(!response.ok){if(response.status===401)throw new Error('פג תוקף ההרשאה. לחצו שוב על חיבור Google.');if(response.status===403)throw new Error('Google לא אישר את הפעולה. יש לוודא שההרשאות אושרו ושממשקי Google הופעלו בפרויקט הניסוי.');throw new Error('הפעולה ב־Google לא הושלמה ('+response.status+'). אפשר לנסות שוב.');}return data;
+  if(!response.ok){const stage=googleOperation(path,method),code=googleErrorCode(data),detail=' ['+response.status+(code?' · '+code:'')+']';if(response.status===401)throw new Error(stage+': פג תוקף ההרשאה. לחצו שוב על חיבור Google.'+detail);if(response.status===403)throw new Error(stage+': Google לא אישר את הפעולה. יש לוודא שההרשאות אושרו ושממשקי Google הופעלו בפרויקט הניסוי.'+detail);throw new Error(stage+': הפעולה ב־Google לא הושלמה'+detail+'. אפשר לנסות שוב.');}return data;
+}
+export function workspaceProperties(current){
+  const url=String(current.backendUrl||'');
+  // Drive allows only 124 UTF-8 bytes for each key and value together.
+  if(url&&!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(url))throw new Error('כתובת הבקנד שהוחזרה אינה תקינה');
+  return {therapayPilot:'v1',therapayScriptId:current.scriptId||'',therapayDeploymentId:current.deploymentId||'',therapayBackend0:url.slice(0,80),therapayBackend1:url.slice(80,160),therapayBackend2:url.slice(160)};
 }
 export function backendFiles(core,bootstrap,config){
   if(!config.spreadsheetId||!config.bootstrapSecret||!config.ownerEmail)throw new Error('חסרים פרטי הקמה');
@@ -18,13 +42,13 @@ export async function provisionWorkspace({token,ownerEmail,clinicName,metadata={
   const current={...resumableMetadata(metadata),ownerEmail};
   if(metadata.ownerEmail&&metadata.ownerEmail!==ownerEmail)throw new Error('ההקמה השמורה שייכת לחשבון Google אחר. חזרו לחשבון המקורי.');
   const save=()=>checkpoint(resumableMetadata(current));
-  const publish=async()=>{if(current.spreadsheetId)await request(token,'https://www.googleapis.com/drive/v3/files/'+current.spreadsheetId,{method:'PATCH',body:{appProperties:{therapayPilot:'v1',therapayScriptId:current.scriptId||'',therapayBackendUrl:current.backendUrl||'',therapayDeploymentId:current.deploymentId||''}}});};
+  const publish=async()=>{if(current.spreadsheetId)await request(token,'https://www.googleapis.com/drive/v3/files/'+current.spreadsheetId,{method:'PATCH',body:{appProperties:workspaceProperties(current)}});};
   if(!current.spreadsheetId){
     progress('בודק אם כבר הוקמה קליניקה בחשבון שלך…');
     const q=encodeURIComponent("trashed = false and appProperties has { key='therapayPilot' and value='v1' }");
     const found=await request(token,'https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,appProperties),nextPageToken&pageSize=100');
     if(found.nextPageToken||(found.files||[]).length>1)throw new Error('נמצאו כמה הקמות קודמות. לא יצרנו קליניקה נוספת; יש לבחור את הקליניקה הרצויה לפני המשך.');
-    if(found.files?.length){const file=found.files[0];current.spreadsheetId=file.id;current.scriptId=file.appProperties?.therapayScriptId||'';current.backendUrl=file.appProperties?.therapayBackendUrl||'';current.deploymentId=file.appProperties?.therapayDeploymentId||'';save();}
+    if(found.files?.length){const file=found.files[0],props=file.appProperties||{};current.spreadsheetId=file.id;current.scriptId=props.therapayScriptId||'';current.backendUrl=props.therapayBackendUrl||[props.therapayBackend0,props.therapayBackend1,props.therapayBackend2].map(v=>v||'').join('');current.deploymentId=props.therapayDeploymentId||'';save();}
   }
   let createdScript=false;
   if(!current.spreadsheetId){
