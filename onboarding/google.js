@@ -53,7 +53,9 @@ export async function provisionWorkspace({token,ownerEmail,clinicName,metadata={
   let createdScript=false;
   if(!current.spreadsheetId){
     progress('יוצר גיליון פרטי בחשבון שלך…');
-    const sheet=await request(token,'https://sheets.googleapis.com/v4/spreadsheets',{method:'POST',body:{properties:{title:'TheraPay · '+clinicName,locale:'he_IL',timeZone:'Asia/Jerusalem'},sheets:[{properties:{title:'Patients'}},{properties:{title:'Appointments'}}]}});
+    // Let Sheets choose its supported default locale. The app formats Hebrew,
+    // dates and currency itself; an optional locale must not block provisioning.
+    const sheet=await request(token,'https://sheets.googleapis.com/v4/spreadsheets',{method:'POST',body:{properties:{title:'TheraPay · '+clinicName,timeZone:'Asia/Jerusalem'},sheets:[{properties:{title:'Patients'}},{properties:{title:'Appointments'}}]}});
     current.spreadsheetId=sheet.spreadsheetId;save();await publish();
   }
   const marker=await request(token,'https://www.googleapis.com/drive/v3/files/'+current.spreadsheetId+'?fields=id,appProperties');

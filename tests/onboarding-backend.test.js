@@ -41,7 +41,11 @@ test('workspace creation checkpoints only resource metadata, and never overwrite
  const calls=[],checkpoints=[];let marker={therapayPilot:'v1'},hasScript=false;
  const request=async(token,url,options={})=>{calls.push({url,...options});
  if(url.includes('/drive/v3/files?q='))return {files:[]};
- if(url==='https://sheets.googleapis.com/v4/spreadsheets')return {spreadsheetId:'S1'};
+ if(url==='https://sheets.googleapis.com/v4/spreadsheets'){
+  assert.equal(options.method,'POST');assert.deepEqual(options.body.properties,{title:'TheraPay · Clinic',timeZone:'Asia/Jerusalem'});
+  assert.deepEqual(options.body.sheets.map(s=>s.properties.title),['Patients','Appointments']);
+  return {spreadsheetId:'S1'};
+ }
  if(options.method==='PATCH'){marker=options.body.appProperties;return {};}
  if(url.includes('/drive/v3/files/S1?'))return {id:'S1',appProperties:marker};
  if(url.includes('values:batchGet'))return {valueRanges:[{},{}]};if(url.includes('values:batchUpdate'))return {};
