@@ -1,5 +1,5 @@
 import {onboardingConfig as config} from '../onboarding-config.js';
-import {STEPS,DEFAULT_EMAIL,DEFAULT_WHATSAPP,validateProfile,validateClinic,mapMorningClient,validateSelection,contactChanges,selectedPayload,formatTemplate,resumableMetadata} from './model.js';
+import {STEPS,DEFAULT_EMAIL,DEFAULT_WHATSAPP,validateProfile,validateClinic,mapMorningClient,validateSelection,contactChanges,selectedPayload,formatTemplate,readAccountResources,saveAccountResources} from './model.js';
 import {GOOGLE_SCOPES,provisionWorkspace,clinicRequest} from './google.js';
 import {SAMPLE_CLIENTS} from './demo.js';
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -10,8 +10,8 @@ function showError(text=''){$('wizard-error').textContent=text;$('wizard-error')
 function progress(text){$('wizard-status').hidden=!text;$('wizard-status-text').textContent=text;}
 async function work(fn){if(state.busy)return;state.busy=true;showError();$('wizard-form').inert=true;try{await fn();}catch(error){showError(error.message||'הפעולה לא הושלמה. אפשר לנסות שוב.');}finally{state.busy=false;$('wizard-form').inert=false;progress('');}}
 function input(name,label,value,{type='text',autocomplete='off',readonly=false,max=200}={}){return `<label class="field">${label}<input name="${name}" type="${type}" value="${esc(value)}" ${readonly?'readonly':''} maxlength="${max}" autocomplete="${autocomplete}" ${type==='email'||type==='password'?'dir="ltr"':''} ${type==='number'?'min="0.01" step="0.01"':''}></label>`;}
-function resourceMetadata(){try{return JSON.parse(localStorage.getItem('THERAPAY_PILOT_RESOURCES')||'{}');}catch{return {};}}
-function checkpoint(meta){localStorage.setItem('THERAPAY_PILOT_RESOURCES',JSON.stringify(resumableMetadata(meta)));}
+function resourceMetadata(){return readAccountResources(localStorage,state.profile.email);}
+function checkpoint(meta){saveAccountResources(localStorage,meta);}
 function templateValues(){return {patientName:'נועה לוי',month:'אוקטובר 2026',dates:'01.10.2026, 08.10.2026',amount:'700 ₪',clinicName:state.clinic.clinicName||'הקליניקה שלך'};}
 function render(){
   $('wizard-demo').hidden=!demo;$('wizard-heading').textContent=STEPS[state.step];$('wizard-count').textContent='שלב '+(state.step+1)+' מתוך '+STEPS.length;

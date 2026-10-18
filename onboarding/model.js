@@ -14,4 +14,18 @@ export function selectedPayload(clients){const errors=validateSelection(clients)
 export function formatTemplate(text,values){return String(text||'').replace(/\{(patientName|month|dates|amount|clinicName)\}/g,(_,key)=>String(values[key]??''));}
 // Deliberately excludes password, Morning keys, imported clients and Google tokens.
 export function resumableMetadata(state){return {ownerEmail:state.ownerEmail||'',spreadsheetId:state.spreadsheetId||'',scriptId:state.scriptId||'',deploymentId:state.deploymentId||'',backendUrl:state.backendUrl||''};}
+const RESOURCE_PREFIX='THERAPAY_PILOT_RESOURCES';
+function ownerKey(email){const owner=String(email||'').trim().toLowerCase();return validEmail(owner)?RESOURCE_PREFIX+':'+encodeURIComponent(owner):null;}
+export function readAccountResources(storage,email){
+ const owner=String(email||'').trim().toLowerCase(),key=ownerKey(owner);if(!key)return {};
+ for(const candidate of [key,RESOURCE_PREFIX]){
+  try{const saved=JSON.parse(storage.getItem(candidate)||'null');if(saved&&typeof saved==='object'&&String(saved.ownerEmail||'').trim().toLowerCase()===owner)return resumableMetadata({...saved,ownerEmail:owner});}catch{}
+ }
+ return {};
+}
+export function saveAccountResources(storage,metadata){
+ const owner=String(metadata.ownerEmail||'').trim().toLowerCase(),key=ownerKey(owner);
+ if(!key)throw new Error('חסר חשבון Google לשמירת התקדמות ההקמה');
+ storage.setItem(key,JSON.stringify(resumableMetadata({...metadata,ownerEmail:owner})));
+}
 export function registrationPayload(name,idToken){return {action:'register',name:String(name).trim(),idToken};}
