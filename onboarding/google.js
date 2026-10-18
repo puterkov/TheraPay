@@ -3,6 +3,7 @@ export const GOOGLE_SCOPES=['openid','email','profile','https://www.googleapis.c
 export function randomSecret(){const bytes=crypto.getRandomValues(new Uint8Array(32));return [...bytes].map(b=>b.toString(16).padStart(2,'0')).join('');}
 function googleOperation(path,method){
   const {hostname,pathname}=new URL(path);
+  if(pathname.endsWith('/userinfo'))return 'בדיקת חשבון Google';
   if(hostname==='www.googleapis.com')return method==='PATCH'?'שמירת פרטי ההקמה ב־Drive':pathname.endsWith('/files')?'חיפוש הקמה קודמת ב־Drive':'בדיקת גיליון ב־Drive';
   if(hostname==='sheets.googleapis.com')return pathname.endsWith('/spreadsheets')?'יצירת גיליון פרטי':pathname.includes('batchUpdate')?'יצירת כותרות הגיליון':'קריאת כותרות הגיליון';
   if(pathname.endsWith('/content'))return method==='PUT'?'שמירת קוד הבקנד':'קריאת קוד הבקנד';
@@ -20,7 +21,7 @@ function googleErrorCode(data){
   return [...new Set([...codes,...fields])].join(' · ');
 }
 export async function googleRequest(token,path,{method='GET',body,fetchImpl=fetch}={}){
-  const response=await fetchImpl(path,{method,headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
+  let response;try{response=await fetchImpl(path,{method,headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});}catch{throw new Error(googleOperation(path,method)+': לא ניתן להגיע לשירות Google [NETWORK]. בדקו את החיבור ונסו שוב.');}
   let data;try{data=await response.json();}catch{throw new Error('Google החזיר תשובה לא תקינה');}
   if(!response.ok){const stage=googleOperation(path,method),code=googleErrorCode(data),detail=' ['+response.status+(code?' · '+code:'')+']';if(response.status===401)throw new Error(stage+': פג תוקף ההרשאה. לחצו שוב על חיבור Google.'+detail);if(response.status===403)throw new Error(stage+': Google לא אישר את הפעולה. יש לוודא שההרשאות אושרו ושממשקי Google הופעלו בפרויקט הניסוי.'+detail);throw new Error(stage+': הפעולה ב־Google לא הושלמה'+detail+'. אפשר לנסות שוב.');}return data;
 }
@@ -95,5 +96,11 @@ export async function provisionWorkspace({token,ownerEmail,clinicName,metadata={
 export async function clinicRequest(url,action,payload={}){
   if(!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(url))throw new Error('כתובת הבקנד אינה תקינה');
   const control=new AbortController(),timeout=setTimeout(()=>control.abort(),65000);
-  try{const response=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({...payload,action}),credentials:'omit',redirect:'follow',signal:control.signal});let data;try{data=await response.json();}catch{throw new Error('הבקנד עדיין אינו זמין. יש להשלים את אישור ההרשאות בחשבון Google שלך.');}if(!response.ok||!data.success)throw new Error(data.message||'הפעולה לא הושלמה');return data;}catch(error){if(error.name==='AbortError')throw new Error('הפעולה התעכבה. אפשר לנסות שוב בלי ליצור חשבון נוסף.');throw error;}finally{clearTimeout(timeout);}
+  try{const response=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({...payload,action}),credentials:'omit',redirect:'follow',signal:control.signal});let data;try{data=await response.json();}catch{throw new Error('הבקנד עדיין אינו זמין. יש להשלים את אישור ההרשאות בחשבון Google שלך.');}if(!response.ok||!data.success)throw new Error(data.message||'הפעולה לא הושלמה');return data;}catch(error){if(error.name==='AbortError')throw new Error('הפעולה התעכבה. אפשר לנסות שוב בלי ליצור חשבון נוסף.');if(error instanceof TypeError)throw new Error('לא ניתן להגיע לבקנד הפרטי [NETWORK]. ודאו שהפריסה מאפשרת גישה ושאישרתם את הרשאות Google.');throw error;}finally{clearTimeout(timeout);}
+}
+export async function registerIdentity(registryUrl,profile,idToken,{fetchImpl=fetch,relay=false}={}){
+ if(!relay)return clinicRequest(registryUrl,'register',{name:profile.name,idToken});
+ let response;try{response=await fetchImpl('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:profile.name,idToken}),credentials:'omit'});}catch{throw new Error('לא ניתן להגיע לשירות הרישום באתר [REGISTRATION_NETWORK]. בדקו את החיבור ונסו שוב.');}
+ let data;try{data=await response.json();}catch{throw new Error('שירות הרישום באתר עדיין אינו זמין [REGISTRATION_RESPONSE]. רעננו ונסו שוב.');}
+ if(!response.ok||!data.success)throw new Error(data.message||'רישום המשתמש לא הושלם');return data;
 }
