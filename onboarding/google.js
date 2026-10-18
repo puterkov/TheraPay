@@ -91,7 +91,7 @@ export async function provisionWorkspace({token,ownerEmail,clinicName,metadata={
     const url=deployment.entryPoints?.find(e=>e.webApp?.url)?.webApp.url;if(!url)throw new Error('Google לא החזיר כתובת Web App. נדרש לבדוק את הפריסה; לא יצרנו גיליון נוסף.');
     current.deploymentId=deployment.deploymentId;current.backendUrl=url;save();await publish();
   }
-  return {...resumableMetadata(current),bootstrapSecret:secret,authorizationUrl:'https://script.google.com/home/projects/'+current.scriptId+'/edit'};
+  return {...resumableMetadata(current),bootstrapSecret:secret};
 }
 export async function clinicRequest(url,action,payload={}){
   if(!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(url))throw new Error('כתובת הבקנד אינה תקינה');
