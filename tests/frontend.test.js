@@ -22,7 +22,7 @@ function fixture(){
     document:{getElementById:id=>{if(!elements[id])throw Error('Missing element '+id);return elements[id];},addEventListener(){},querySelectorAll:selector=>selector==='dialog'?['patient','appointment','message','pay','appointment-details'].map(id=>elements[id]):selector==='.view'?['dashboard','patients','appointments','collection','documents','settings','tasks'].map(id=>Object.assign(elements[id],{id})):[],createTextNode:text=>({textContent:text}),createElement:()=>new Element()},
     fetch:async(url,options)=>{calls.push(JSON.parse(options.body));const result=await queue.shift();if(result instanceof Error)throw result;if(!result)throw Error('Unexpected request');return {ok:true,json:async()=>result};}
   };
-  vm.createContext(context);vm.runInContext(source,context);sessionStorage.setItem('THERAPAY_ACCESS_TOKEN','fixture-access');
+  vm.createContext(context);vm.runInContext(source,context);sessionStorage.setItem('THERAPAY_ACCESS_TOKEN','fixture-access');localStorage.setItem('APPS_SCRIPT_URL','https://script.google.com/macros/s/TEST_BACKEND/exec');
   const data={success:true,apiVersion:2,environment:'sandbox',morningConfigured:true,supportsEmailDelivery:true,supportsOptionalEmailDelivery:true,supportsEditing:true,patients:[{id:'p1',name:'בדיקה',phone:'0541234567',rate:350,status:'פעיל'}],appointments:[{id:'a1',patientId:'p1',clientName:'בדיקה',date:'2020-01-01',amount:350,isPaid:false},{id:'a2',patientId:'p1',clientName:'בדיקה',date:'2020-01-02',amount:350,isPaid:false}]};
   const run=code=>vm.runInContext(code,context);
   return {context,sessionStorage,localStorage,elements,queue,calls,data,run,async connect(){queue.push(structuredClone(data));await run('load()');}};

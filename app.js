@@ -24,7 +24,7 @@ function showInvoiceOutcome(result,refreshWarning=''){
 }
 function patient() { return state.patients.find(p => p.id === state.patientId); }
 function chosen() { return selectedAppointments(state.appointments, state.selected, state.patientId); }
-function apiUrl() { return localStorage.getItem('APPS_SCRIPT_URL') || 'https://script.google.com/macros/s/AKfycbwQbZlqV_kHG6IaffOtnoJ7x1ufiWa9Z9rFJs7eUaLO1hc-d1-4l2WeiEBaZFCn5uq5aA/exec'; }
+function apiUrl() { return localStorage.getItem('APPS_SCRIPT_URL') || ''; }
 function uuid() { return crypto.randomUUID(); }
 function safeLink(url) { try { const u = new URL(url); return u.protocol === 'https:' ? u.href : ''; } catch { return ''; } }
 function accessToken(){return sessionStorage.getItem('THERAPAY_ACCESS_TOKEN')||localStorage.getItem('THERAPAY_ACCESS_TOKEN')||'';}
