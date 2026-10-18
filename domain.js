@@ -48,7 +48,8 @@ export function phoneForWhatsApp(value) {
   throw new Error('מספר הטלפון חסר או אינו תקין. יש לעדכן את הטלפון בגיליון.');
 }
 export const displayDate = date => validDate(date) ? new Intl.DateTimeFormat('he-IL', { day:'numeric', month:'long', year:'numeric', timeZone:'UTC' }).format(new Date(date)) : 'תאריך חסר';
-export function paymentMessage(patient, appointments, signature = '') {
+export function paymentMessage(patient, appointments, signature = '', template = '') {
   const months = [...new Set(appointments.map(a => a.date.slice(0,7)))].sort().map(m => new Intl.DateTimeFormat('he-IL', {month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(m+'-01')));
+  if(template){const values={patientName:patient.name,month:months.join(', '),dates:appointments.map(a=>a.date.split('-').reverse().join('.')).join(', '),amount:money(total(appointments)),clinicName:signature};return String(template).replace(/\{(patientName|month|dates|amount|clinicName)\}/g,(_,key)=>values[key]);}
   return `שלום ${patient.name},\nתזכורת לתשלום עבור הפגישות בחודשים ${months.join(', ')}.\nתאריכי הפגישות: ${appointments.map(a => a.date.split('-').reverse().join('.')).join(', ')}.\nסה״כ לתשלום: ${money(total(appointments))}.\nתודה רבה${signature ? ', '+signature : ''}`;
 }

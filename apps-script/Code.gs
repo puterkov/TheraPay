@@ -1,7 +1,7 @@
 /** TheraPay API v2. Bound to the existing clinic spreadsheet. */
 var API_VERSION = 2;
 var FIELDS = {
-  patient: { id:['מזהה מטופל'], name:['שם מלא','שם'], phone:['טלפון'], rate:['תעריף ברירת מחדל','תעריף'], status:['סטטוס'], morningId:['morning_client_id','מזהה לקוח Morning'] },
+  patient: { id:['מזהה מטופל'], name:['שם מלא','שם'], phone:['טלפון'], rate:['תעריף ברירת מחדל','תעריף'], status:['סטטוס'], morningId:['morning_client_id','מזהה לקוח Morning'], email:['מייל','email'] },
   appointment: { id:['מזהה פגישה'], timestamp:['תאריך ושעה'], date:['תאריך'], name:['שם המטופל','שם המטופל/ת'], amount:['סכום לתשלום','סכום'], status:['סטטוס תשלום'], method:['אמצעי תשלום'], doc:['מספר חשבונית'], morning:['morning_status'], pdf:['pdf_url'], patientId:['מזהה מטופל'] }
 };
 function json_(data) { data.apiVersion=API_VERSION; return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON); }
@@ -48,7 +48,7 @@ function amount_(value){var n=Number(value);if(!isFinite(n)||n<=0||Math.abs(n*10
 function storedAmount_(value){var n=Number(value);return isFinite(n)&&n>0?n:0;}
 function unique_(items,label){var seen={};items.forEach(function(x){if(!x.id||seen[x.id])fail_('מזהה חסר או כפול ב'+label+'. יש לתקן את הגיליון לפני המשך עבודה.');seen[x.id]=true;});}
 function patients_(){
-  var t=table_('patient');var list=t.rows.map(function(r){var phone=text_(val_(t,r,'phone'));if(/^5\d{8}$/.test(phone))phone='0'+phone;return {id:text_(val_(t,r,'id')),name:text_(val_(t,r,'name')),phone:phone,rate:storedAmount_(val_(t,r,'rate')),status:text_(val_(t,r,'status')),morningId:text_(val_(t,r,'morningId'))};});unique_(list,'מטופלים');return list;
+  var t=table_('patient');var list=t.rows.map(function(r){var phone=text_(val_(t,r,'phone'));if(/^5\d{8}$/.test(phone))phone='0'+phone;return {id:text_(val_(t,r,'id')),name:text_(val_(t,r,'name')),phone:phone,rate:storedAmount_(val_(t,r,'rate')),status:text_(val_(t,r,'status')),morningId:text_(val_(t,r,'morningId')),email:text_(val_(t,r,'email'))};});unique_(list,'מטופלים');return list;
 }
 function appointments_(patients){
   var t=table_('appointment');var list=t.rows.map(function(r){
@@ -59,7 +59,7 @@ function appointments_(patients){
   });unique_(list,'פגישות');return {table:t,list:list};
 }
 function environment_(){var env=PropertiesService.getScriptProperties().getProperty('MORNING_ENV')||'sandbox';if(env!=='sandbox'&&env!=='production')fail_('MORNING_ENV חייב להיות sandbox או production.');return env;}
-function readData_(){var p=patients_();var a=appointments_(p).list;var props=PropertiesService.getScriptProperties();return {success:true,supportsTasks:true,supportsOptionalEmailDelivery:true,supportsEditing:true,supportsEmailDelivery:true,patients:p,appointments:a.map(function(x){var copy=Object.assign({},x);delete copy._row;return copy;}),environment:environment_(),morningConfigured:!!(props.getProperty('MORNING_API_KEY')&&props.getProperty('MORNING_API_SECRET'))};}
+function readData_(){var p=patients_();var a=appointments_(p).list;var props=PropertiesService.getScriptProperties();return {success:true,clinicSettings:{onboardingComplete:props.getProperty('PILOT_ONBOARDING_COMPLETE')==='true',clinicName:props.getProperty('CLINIC_NAME')||'',emailTemplate:props.getProperty('EMAIL_TEMPLATE')||'',whatsappTemplate:props.getProperty('WHATSAPP_TEMPLATE')||'',defaultRate:Number(props.getProperty('DEFAULT_RATE')||350)},supportsTasks:true,supportsOptionalEmailDelivery:true,supportsEditing:true,supportsEmailDelivery:true,patients:p,appointments:a.map(function(x){var copy=Object.assign({},x);delete copy._row;return copy;}),environment:environment_(),morningConfigured:!!(props.getProperty('MORNING_API_KEY')&&props.getProperty('MORNING_API_SECRET'))};}
 function literal_(value){var s=text_(value);return /^[=+@\-]/.test(s)?"'"+s:s;}
 function append_(t,obj){var row=t.headers.map(function(){return '';});Object.keys(obj).forEach(function(key){if(t.cols[key]>=0)row[t.cols[key]]=obj[key];});t.sheet.appendRow(row);SpreadsheetApp.flush();}
 function ensurePatientIdColumn_(t){if(t.cols.patientId<0){t.cols.patientId=t.headers.length;t.headers.push('מזהה מטופל');t.sheet.getRange(1,t.headers.length).setValue('מזהה מטופל');}}
@@ -200,6 +200,7 @@ function issueDocument_(req){
   journalRows.slice(1).forEach(function(row){if(row[0]===req.requestId||['pending','unknown','issued'].indexOf(row[2])<0)return;var saved=row[3]?JSON.parse(row[3]):null;if(saved&&saved.ids&&selection.apps.some(function(a){return saved.ids.indexOf(a.id)>=0;}))fail_('קיימת בקשת הפקה קודמת עבור אחת הפגישות. יש להשלים את הבירור לפני הפקה נוספת.','UNCERTAIN');});
   var reservation={ids:selection.apps.map(function(a){return a.id;}),patientId:selection.patient.id};
   var payload={type:320,lang:'he',currency:'ILS',vatType:0,signed:true,attachment:recipient.emails.length>0,date:today_(),client:recipient,income:selection.apps.map(function(a){return {description:'טיפול בקליניקה בתאריך '+a.date,quantity:1,price:a.amount,vatType:1,currency:'ILS'};}),payment:[payment.object]};
+  var emailTemplate=PropertiesService.getScriptProperties().getProperty('EMAIL_TEMPLATE');if(emailTemplate)payload.emailContent=pilotMessage_(emailTemplate,selection.patient,selection.apps,selection.amount);
   record_(rec,req,fp,'pending',reservation);
   var response;
   try{response=UrlFetchApp.fetch((env==='sandbox'?'https://sandbox.d.greeninvoice.co.il':'https://api.greeninvoice.co.il')+'/api/v1/documents',{method:'post',contentType:'application/json',headers:{Authorization:'Bearer '+token},payload:JSON.stringify(payload),muteHttpExceptions:true});}
@@ -248,3 +249,9 @@ function saveTask_(req){
   return {success:true,task:{id:id,text:content,dueDate:due,remindDays:lead,completed:req.completed,revision:revision}};
 }
 function taskPublic_(task){return {id:task.id,text:task.text,dueDate:task.dueDate,remindDays:task.remindDays,completed:task.completed,revision:task.revision};}
+
+function pilotMessage_(template,patient,apps,amount){
+  var dates=apps.map(function(a){return a.date;}).sort(),months=[];dates.forEach(function(d){var m=d.slice(0,7);if(months.indexOf(m)<0)months.push(m);});
+  var values={patientName:patient.name,month:months.join(', '),dates:dates.join(', '),amount:amount+' ₪',clinicName:PropertiesService.getScriptProperties().getProperty('CLINIC_NAME')||''};
+  return String(template).replace(/\{(patientName|month|dates|amount|clinicName)\}/g,function(_,key){return values[key];});
+}

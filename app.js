@@ -1,9 +1,9 @@
-import { today, money, taskReminderDate, actionableTasks, dashboardMetrics, validDate, defaultSelection, selectedAppointments, total, phoneForWhatsApp, displayDate, paymentMessage, applyIssuedDocument } from './domain.js?v=tasks-20261016';
+import { today, money, taskReminderDate, actionableTasks, dashboardMetrics, validDate, defaultSelection, selectedAppointments, total, phoneForWhatsApp, displayDate, paymentMessage, applyIssuedDocument } from './domain.js?v=onboarding-pilot';
 
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const demo = new URLSearchParams(location.search).get('demo') === '1';
-const state = { patients:[], appointments:[], tasks:[], supportsTasks:false, tasksError:'', taskEdit:null, savingTaskId:null, patientId:'', month:today().slice(0,7), appointmentsPatient:'ALL', appointmentsMonth:'ALL', documentsPatient:'ALL', documentsMonth:'ALL', selected:new Set(), view:'dashboard', connected:false, loaded:false, loading:false, refreshFailed:false, environment:'sandbox', morningConfigured:false, emailDelivery:false, optionalEmailDelivery:false, recipient:null, editing:{}, supportsEditing:false, busy:false };
+const state = { patients:[], appointments:[], tasks:[], clinicSettings:{}, supportsTasks:false, tasksError:'', taskEdit:null, savingTaskId:null, patientId:'', month:today().slice(0,7), appointmentsPatient:'ALL', appointmentsMonth:'ALL', documentsPatient:'ALL', documentsMonth:'ALL', selected:new Set(), view:'dashboard', connected:false, loaded:false, loading:false, refreshFailed:false, environment:'sandbox', morningConfigured:false, emailDelivery:false, optionalEmailDelivery:false, recipient:null, editing:{}, supportsEditing:false, busy:false };
 let attempt = readAttempt();
 function readAttempt() { try { return JSON.parse(sessionStorage.getItem('THERAPAY_ATTEMPT') || 'null'); } catch { return null; } }
 function notice(text, error = false) { $('notice').classList.toggle('invoice-notice',false);$('notice').classList.toggle('invoice-unsent',false);$('notice').textContent = text; $('notice').hidden = false; $('notice').classList.toggle('error', error); }
@@ -69,6 +69,7 @@ async function load(options={}) {
   try {
     const data = await api('getAllData');
     if (!Array.isArray(data.patients) || !Array.isArray(data.appointments)) throw new Error('מבנה הנתונים מהשרת אינו תקין.');
+    state.clinicSettings=data.clinicSettings||{};
     state.patients = data.patients;
     state.appointments = data.appointments;state.supportsTasks=data.supportsTasks===true;
     state.connected = true;
@@ -286,7 +287,7 @@ $('appointments-month').addEventListener('change',e=>{state.appointmentsMonth=e.
 $('month').addEventListener('change',e=>{if(/^\d{4}-\d{2}$/.test(e.target.value)){state.month=e.target.value;resetSelection();renderCollection();}});
 $('appointment-groups').addEventListener('change',e=>{const id=e.target.dataset.appointment;if(id){e.target.checked?state.selected.add(id):state.selected.delete(id);updateSelection();}});
 $('appointment-form').elements.patientId.addEventListener('change',fillRate);
-$('whatsapp').addEventListener('click',()=>{try{phoneForWhatsApp(patient()?.phone);$('message-text').value=paymentMessage(patient(),chosen(),localStorage.getItem('THERAPAY_SIGNATURE')||'');updateMessageLink();$('message').showModal();}catch(e){notice(e.message,true);}});
+$('whatsapp').addEventListener('click',()=>{try{phoneForWhatsApp(patient()?.phone);$('message-text').value=paymentMessage(patient(),chosen(),localStorage.getItem('THERAPAY_SIGNATURE')||state.clinicSettings.clinicName||'',state.clinicSettings.whatsappTemplate||'');updateMessageLink();$('message').showModal();}catch(e){notice(e.message,true);}});
 $('message-text').addEventListener('input',updateMessageLink);
 if(demo) $('whatsapp-link').addEventListener('click',e=>{e.preventDefault();notice('מצב הדגמה · לא נפתחת שיחה למספר הבדוי.');$('message').close();});
 $('payment').addEventListener('click',showPayment);
@@ -415,4 +416,4 @@ if(demo){
   state.appointments.push({id:'APP-DEMO-06',patientId:'PAT-DEMO-2',clientName:'אורי גפן',date:before+'-15',amount:400,isPaid:true,docNumber:'DEMO-1001',pdfUrl:''});
   state.tasks=[{id:'TASK-DEMO-1',text:'להכין סיכום חודשי',dueDate:today(),remindDays:0,completed:false,revision:1},{id:'TASK-DEMO-2',text:'לעדכן את פרטי הקליניקה',dueDate:'',remindDays:1,completed:false,revision:1}];
   resetSelection();render();setAppLoading(false);
-}else{render();if(apiUrl()&&accessToken())load().catch(error=>{openDialog('settings');$('settings-result').textContent=error.message;});else{openDialog('settings');setAppLoading(false);}}
+}else{render();if(apiUrl()&&accessToken())load().catch(error=>{openDialog('settings');$('settings-result').textContent=error.message;});else{if(new URLSearchParams(location.search).get('existing')==='1'||typeof location.assign!=='function'){openDialog('settings');setAppLoading(false);}else location.assign('./onboarding.html');}}
