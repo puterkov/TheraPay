@@ -51,3 +51,17 @@ test('successful Morning connection loads clients and advances automatically; a 
  await f.api.work(f.api.next);assert.equal(initializations,1);assert.equal(loads,2);assert.equal(f.api.state.step,4);
  assert.equal(f.element('wizard-next').textContent,'המשך לנוסחי ההודעות');assert.equal((f.element('wizard-content').innerHTML.match(/<button/g)||[]).length,0);
 });
+
+
+test('new account is guided through personal API settings before setup; opening settings alone never advances',async()=>{
+ const f=fixture(false);f.api.state.step=1;f.api.state.profile.email='new@example.com';f.api.render();
+ assert.equal(f.element('wizard-api-settings').hidden,false);assert.equal(f.element('wizard-next').hidden,true);
+ assert.match(f.element('wizard-content').innerHTML,/Google Apps Script API/);
+ assert.match(f.element('wizard-content').innerHTML,/new@example.com/);
+ let calls=0;f.context.connectStub=async()=>{calls++;f.api.state.resourcesReady=true;};f.run('connectWorkspace=connectStub');
+ await f.api.work(f.api.next);assert.equal(calls,0);
+ f.element('wizard-api-settings').listeners.click();assert.equal(f.api.state.step,1);assert.equal(f.api.state.resourcesReady,false);
+ assert.equal(f.element('wizard-api-settings').hidden,true);assert.equal(f.element('wizard-next').hidden,false);
+ assert.equal(f.element('wizard-next').textContent,'הפעלתי — בדיקה והמשך');
+ await f.api.work(f.api.next);assert.equal(calls,1);assert.equal(f.api.state.step,2);
+});

@@ -44,3 +44,7 @@
 
 ## שכחת סיסמת הקליניקה
 במסך כניסה לקליניקה קיימת נוסף ״שכחתי את סיסמת הקליניקה״. הפעולה דורשת שוב OAuth לאותו חשבון Google ומכינה פריסת איפוס נפרדת, `MYSELF` / `USER_ACCESSING`, עם אותם scopes. הסיסמה החדשה נבחרת ונשמרת במסך Google הפרטי באמצעות google.script.run; היא אינה נשלחת לשרת Vercel או לגיליון ההפצה. שרת האיפוס בודק 16–256 תווים ואישור זהה, משתמש בנעילת הסקריפט, ומעדכן רק APP_ACCESS_TOKEN בקליניקה שכבר אותחלה. הפריסה הפעילה של הבקנד ומפתחות Morning אינם משתנים. מסך הסיום אינו מחזיר את הסיסמה ומנחה להיכנס איתה באשף. בדיקות מכסות אי־התאמת חשבון, פרטיות הפריסה, שינוי שדה יחיד, אישור סיסמה, מניעת לחיצה כפולה וניקוי השדות. התהליך החי עדיין מצריך בדיקה של בעל החשבון ואישוריו ב־Google.
+
+
+### Personal Apps Script API permission
+New accounts are guided through Google Apps Script API activation at https://script.google.com/home/usersettings before provisioning. The wizard displays the signed-in email, one primary settings link, then a check-and-continue action. Opening the link does not mark provisioning successful: actual Google operations must succeed. A script API 403 returns new accounts to the settings action with safe diagnostics; it may also mean denied scopes or a project API issue, so the UI asks users to verify the switch rather than asserting it is disabled. Existing private authorization and password-reset flows stay separate.
