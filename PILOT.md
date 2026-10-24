@@ -48,3 +48,6 @@
 
 ### Personal Apps Script API permission
 New accounts are guided through Google Apps Script API activation at https://script.google.com/home/usersettings before provisioning. The wizard displays the signed-in email, one primary settings link, then a check-and-continue action. Opening the link does not mark provisioning successful: actual Google operations must succeed. A script API 403 returns new accounts to the settings action with safe diagnostics; it may also mean denied scopes or a project API issue, so the UI asks users to verify the switch rather than asserting it is disabled. Existing private authorization and password-reset flows stay separate.
+
+
+New clinic passwords require 8–256 characters, an ASCII uppercase letter, a digit and a non-letter/non-number/non-whitespace special character. Validation runs in onboarding, bootstrap, and the private reset page/client and server. Existing long passwords remain valid for login. Private reset deployment uses v2; a legacy backend with the 16-character authentication guard is refused before offering an 8-character reset to prevent lockout. Already deployed private backends need an owner-authorized upgrade; publishing the frontend alone cannot change those deployments.

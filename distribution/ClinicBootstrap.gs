@@ -29,7 +29,7 @@ function doPost(e){
 function authorizePilot(){SpreadsheetApp.openById(PILOT_BOOTSTRAP.spreadsheetId).getName();UrlFetchApp.fetch('https://www.google.com/generate_204',{muteHttpExceptions:true});}
 function pilotInitialize_(req,props){
   var password=String(req.password||''),name=text_(req.clinicName),key=text_(req.morningKey),secret=text_(req.morningSecret),env=req.environment;
-  if(password.length<16||password.length>256||!name||name.length>100||!key||!secret||['sandbox','production'].indexOf(env)<0)fail_('יש להשלים שם קליניקה, סיסמה של 16 תווים לפחות ומפתחות Morning.');
+  if(password.length<8||password.length>256||!/[A-Z]/.test(password)||!/[0-9]/.test(password)||!/[^\p{L}\p{N}\s]/u.test(password)||!name||name.length>100||!key||!secret||['sandbox','production'].indexOf(env)<0)fail_('יש להשלים שם קליניקה ומפתחות Morning, ולבחור סיסמה של לפחות 8 תווים הכוללת מספר, אות גדולה באנגלית ותו מיוחד.');
   var rate=amount_(req.defaultRate);
   var values={SPREADSHEET_ID:PILOT_BOOTSTRAP.spreadsheetId,APP_ACCESS_TOKEN:password,MORNING_API_KEY:key,MORNING_API_SECRET:secret,MORNING_ENV:env,CLINIC_NAME:name,DEFAULT_RATE:String(rate),PILOT_RECEIPT:text_(req.registrationReceipt)};
   if(props.getProperty('PILOT_INITIALIZED')==='true'){

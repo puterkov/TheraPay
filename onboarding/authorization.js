@@ -2,7 +2,7 @@ import {googleRequest} from './google.js';
 import {RESET_HTML,RESET_SERVER_SOURCE} from './password-reset.js';
 
 const DESCRIPTION='TheraPay owner authorization v1';
-const RESET_DESCRIPTION='TheraPay owner password reset v1';
+const RESET_DESCRIPTION='TheraPay owner password reset v2';
 const OWNER_PAGE=`function doGet() {
   SpreadsheetApp.openById(PILOT_BOOTSTRAP.spreadsheetId).getName();
   UrlFetchApp.fetch('https://www.google.com/generate_204', {muteHttpExceptions:true});
@@ -24,6 +24,7 @@ export function privateAuthorizationFiles(files,ownerEmail,spreadsheetId,purpose
  const core=copy.find(f=>f.name==='Code'&&f.type==='SERVER_JS'),manifest=copy.find(f=>f.name==='appsscript'&&f.type==='JSON');
  if(!core?.source.includes('function clinicDoPost(e)')||!manifest||copy.some(f=>f.name==='OwnerAuthorization'))throw new Error('לא ניתן להכין אישור לפרויקט הזה בלי לשנות קוד לא מוכר');
  if(copy.filter(f=>f.type==='SERVER_JS').reduce((n,f)=>n+(f.source.match(/function\s+doGet\s*\(/g)||[]).length,0)!==1||!/function\s+doGet\s*\(/.test(core.source))throw new Error('לא ניתן לזהות את נקודת הכניסה לפרויקט');
+ if(purpose==='reset'&&/secret\.length\s*<\s*16/.test(core.source))throw new Error('הבקנד של הקליניקה הזו דורש עדכון לפני איפוס לסיסמה של 8 תווים. הסיסמה הקיימת לא שונתה.');
  core.source=core.source.replace(/function\s+doGet\s*\(/,'function clinicStatusGet(');
  const settings=JSON.parse(manifest.source);
  settings.webapp={access:'MYSELF',executeAs:'USER_ACCESSING'};

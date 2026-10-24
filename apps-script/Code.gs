@@ -12,7 +12,7 @@ function doPost(e) {
   try {
     var req=JSON.parse(e && e.postData ? e.postData.contents : '{}');
     var secret=PropertiesService.getScriptProperties().getProperty('APP_ACCESS_TOKEN');
-    if(!secret || secret.length<16 || req.accessToken!==secret) return json_({success:false,code:'AUTH',message:'סיסמת הקליניקה חסרה או שגויה. יש להתחבר מחדש.'});
+    if(!secret || secret.length<8 || req.accessToken!==secret) return json_({success:false,code:'AUTH',message:'סיסמת הקליניקה חסרה או שגויה. יש להתחבר מחדש.'});
     lock=LockService.getScriptLock();if(!lock.tryLock(25000))fail_('המערכת מבצעת פעולה אחרת. נסו שוב בעוד רגע.','BUSY');
     var result;
     if(req.action==='getAllData')result=readData_();

@@ -18,6 +18,13 @@ test('switching Google accounts resumes each owner separately without deleting a
  assert.throws(()=>saveAccountResources(storage,{spreadsheetId:'UNKNOWN'}));
 });
 test('selected patients require valid phone, email and rate; unselected patients do not block',()=>{const a=mapMorningClient({id:'M1',name:'נועה',emails:[]},350);assert.deepEqual(validateSelection([a]),{});a.selected=true;assert.equal(validateSelection([a]).M1.length,2);a.phone='+972541234567';a.email='a@example.com';assert.deepEqual(validateSelection([a]),{});assert.equal(selectedPayload([a])[0].phone,'0541234567');assert.equal(contactChanges([a]).length,1);a.rate=-1;assert.throws(()=>selectedPayload([a]));});
-test('clinic password must be chosen and confirmed with a valid default rate',()=>{assert.equal(Object.keys(validateClinic({clinicName:'דנה',password:'a'.repeat(16),passwordConfirm:'a'.repeat(16),defaultRate:350})).length,0);assert.ok(validateClinic({clinicName:'דנה',password:'short',passwordConfirm:'wrong',defaultRate:0}).password);});
+test('clinic password must be chosen and confirmed with a valid default rate',()=>{assert.equal(Object.keys(validateClinic({clinicName:'דנה',password:'Abcd123!' ,passwordConfirm:'Abcd123!' ,defaultRate:350})).length,0);assert.ok(validateClinic({clinicName:'דנה',password:'short',passwordConfirm:'wrong',defaultRate:0}).password);});
 test('resumable metadata never stores credentials or patient records',()=>{const value=resumableMetadata({ownerEmail:'owner@example.com',spreadsheetId:'S1',password:'private',morningKey:'key',clients:[{name:'private'}],googleToken:'private'});assert.deepEqual(Object.keys(value),['ownerEmail','spreadsheetId','scriptId','deploymentId','backendUrl']);assert.ok(!JSON.stringify(value).includes('private'));});
 test('message templates substitute known fields without evaluating content',()=>{assert.equal(formatTemplate('שלום {patientName}: {amount}',{patientName:'נועה',amount:'350 ₪'}),'שלום נועה: 350 ₪');});
+
+
+test('new clinic password requires eight characters, uppercase ASCII, a digit and punctuation',()=>{
+ const check=password=>validateClinic({clinicName:'Clinic',password,passwordConfirm:password,defaultRate:350}).password;
+ assert.equal(check('Abcd123!'),undefined);
+ for(const password of ['Abc12!','abcd123!','Abcdefg!','Abcd1234','Abcd123 ','Abcd123א','A1!'+'x'.repeat(254)])assert.ok(check(password),password);
+});
