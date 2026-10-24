@@ -28,6 +28,12 @@ test('pending owner permission opens only the private Google authorization page 
  let checks=0;f.context.probeStub=async()=>{checks++;f.api.state.resourcesReady=true;};f.run('probe=probeStub');
  await f.api.work(f.api.next);assert.equal(checks,1);assert.equal(f.api.state.step,2);
 });
+test('forgot-password flow verifies the same Google owner and prepares a private reset link without reading or changing the password',async()=>{
+ const f=fixture(false);f.api.state.step=1;f.api.state.profile.email='owner@example.com';f.api.state.resources={initialized:true,ownerEmail:'owner@example.com',scriptId:'P1',spreadsheetId:'S1'};
+ let prepares=0;f.context.requestGoogleAccess=()=>Promise.resolve('owner-token');f.context.googleRequest=async()=>({email:'owner@example.com',email_verified:true});f.context.prepareOwnerAuthorization=async input=>{prepares++;assert.equal(input.purpose,'reset');assert.equal(input.ownerEmail,'owner@example.com');assert.equal(input.token,'owner-token');assert.ok(!('password' in input));return 'https://script.google.com/macros/s/RESET/exec';};
+ await f.context.preparePasswordReset();assert.equal(prepares,1);assert.equal(f.api.state.step,1);assert.match(f.element('wizard-content').innerHTML,/פתיחת איפוס הסיסמה/);assert.ok(!f.element('wizard-content').innerHTML.includes('owner-token'));assert.equal(f.element('wizard-form').inert,false);
+ const other=fixture(false);other.api.state.step=1;other.api.state.profile.email='owner@example.com';other.context.requestGoogleAccess=()=>Promise.resolve('token');other.context.googleRequest=async()=>({email:'other@example.com',email_verified:true});other.context.prepareOwnerAuthorization=async()=>{throw Error('Must not prepare another account');};await other.context.preparePasswordReset();assert.match(other.element('wizard-error').textContent,/אותו חשבון/);assert.equal(other.api.state.resources.passwordResetUrl,undefined);
+});
 test('double submission cannot open a second Google setup while the first is pending',async()=>{
  const f=fixture();f.api.state.step=1;let release,calls=0;
  f.context.connectStub=()=>{calls++;return new Promise(r=>{release=()=>{f.api.state.resourcesReady=true;r();};});};f.run('connectWorkspace=connectStub');

@@ -1,6 +1,8 @@
 import {googleRequest} from './google.js';
+import {RESET_HTML,RESET_SERVER_SOURCE} from './password-reset.js';
 
 const DESCRIPTION='TheraPay owner authorization v1';
+const RESET_DESCRIPTION='TheraPay owner password reset v1';
 const OWNER_PAGE=`function doGet() {
   SpreadsheetApp.openById(PILOT_BOOTSTRAP.spreadsheetId).getName();
   UrlFetchApp.fetch('https://www.google.com/generate_204', {muteHttpExceptions:true});
@@ -15,7 +17,8 @@ function validateOwner(files,ownerEmail,spreadsheetId){
  const config=JSON.parse(match[1]);
  if(config.ownerEmail!==ownerEmail||config.spreadsheetId!==spreadsheetId)throw new Error('פרויקט ההקמה אינו שייך לחשבון שנבחר');
 }
-export function privateAuthorizationFiles(files,ownerEmail,spreadsheetId){
+export function privateAuthorizationFiles(files,ownerEmail,spreadsheetId,purpose='authorize'){
+ if(!['authorize','reset'].includes(purpose))throw new Error('פעולת הבעלים אינה מוכרת');
  validateOwner(files,ownerEmail,spreadsheetId);
  const copy=files.map(({name,type,source})=>({name,type,source}));
  const core=copy.find(f=>f.name==='Code'&&f.type==='SERVER_JS'),manifest=copy.find(f=>f.name==='appsscript'&&f.type==='JSON');
@@ -25,11 +28,14 @@ export function privateAuthorizationFiles(files,ownerEmail,spreadsheetId){
  const settings=JSON.parse(manifest.source);
  settings.webapp={access:'MYSELF',executeAs:'USER_ACCESSING'};
  manifest.source=JSON.stringify(settings);
- copy.push({name:'OwnerAuthorization',type:'SERVER_JS',source:OWNER_PAGE});
+ const resetSource='function doGet() { SpreadsheetApp.openById(PILOT_BOOTSTRAP.spreadsheetId).getName(); return HtmlService.createHtmlOutput('+JSON.stringify(RESET_HTML)+').setTitle("TheraPay · איפוס סיסמה"); }\n'+RESET_SERVER_SOURCE;
+ copy.push({name:'OwnerAuthorization',type:'SERVER_JS',source:purpose==='reset'?resetSource:OWNER_PAGE});
  return copy;
 }
 
-export async function prepareOwnerAuthorization({token,resources,ownerEmail,request=googleRequest,progress=()=>{}}){
+export async function prepareOwnerAuthorization({token,resources,ownerEmail,request=googleRequest,progress=()=>{},purpose='authorize'}){
+ if(!['authorize','reset'].includes(purpose))throw new Error('פעולת הבעלים אינה מוכרת');
+ const description=purpose==='reset'?RESET_DESCRIPTION:DESCRIPTION;
  if(!resources.scriptId||!resources.spreadsheetId||resources.ownerEmail!==ownerEmail)throw new Error('חסרים פרטי הקליניקה הפרטית לאישור Google');
  const base='https://script.googleapis.com/v1/projects/'+resources.scriptId;
  const project=await request(token,base);
@@ -40,18 +46,18 @@ export async function prepareOwnerAuthorization({token,resources,ownerEmail,requ
  // Validate ownership even when a previous authorization deployment exists.
  validateOwner(content.files||[],ownerEmail,resources.spreadsheetId);
  const deployments=await request(token,base+'/deployments');
- const existing=(deployments.deployments||[]).find(d=>d.deploymentConfig?.description===DESCRIPTION);
+ const existing=(deployments.deployments||[]).find(d=>d.deploymentConfig?.description===description);
  if(existing)return webUrl(existing);
- const authorizationFiles=privateAuthorizationFiles(content.files||[],ownerEmail,resources.spreadsheetId);
+ const authorizationFiles=privateAuthorizationFiles(content.files||[],ownerEmail,resources.spreadsheetId,purpose);
  const original=(content.files||[]).map(({name,type,source})=>({name,type,source}));
- progress('מכין מסך אישור פרטי של Google…');
+ progress(purpose==='reset'?'מכין מסך פרטי לאיפוס הסיסמה…':'מכין מסך אישור פרטי של Google…');
  let deployment;
  // The backend is a versioned deployment. Never update it or change its access.
  // Build a separate owner-only version, then restore the original working source.
  try{
   await request(token,base+'/content',{method:'PUT',body:{files:authorizationFiles}});
-  const version=await request(token,base+'/versions',{method:'POST',body:{description:DESCRIPTION}});
-  deployment=await request(token,base+'/deployments',{method:'POST',body:{versionNumber:version.versionNumber,manifestFileName:'appsscript',description:DESCRIPTION}});
+  const version=await request(token,base+'/versions',{method:'POST',body:{description}});
+  deployment=await request(token,base+'/deployments',{method:'POST',body:{versionNumber:version.versionNumber,manifestFileName:'appsscript',description}});
  }finally{await request(token,base+'/content',{method:'PUT',body:{files:original}});}
  return webUrl(deployment);
 }

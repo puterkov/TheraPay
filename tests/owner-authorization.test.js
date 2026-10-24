@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {backendFiles} from '../onboarding/google.js';
 import {prepareOwnerAuthorization,privateAuthorizationFiles} from '../onboarding/authorization.js';
+import {RESET_SERVER_SOURCE,RESET_HTML} from '../onboarding/password-reset.js';
 const core=fs.readFileSync(new URL('../apps-script/Code.gs',import.meta.url),'utf8'),bootstrap=fs.readFileSync(new URL('../distribution/ClinicBootstrap.gs',import.meta.url),'utf8');
 const resources={ownerEmail:'owner@example.com',spreadsheetId:'S1',scriptId:'P1',backendUrl:'https://script.google.com/macros/s/BACKEND/exec'};
 function files(){return backendFiles(core,bootstrap,{ownerEmail:resources.ownerEmail,spreadsheetId:'S1',bootstrapSecret:'private-bootstrap',registryUrl:'registry'});}
@@ -42,4 +43,30 @@ test('failed deployment restores original working source; retries reuse existing
 test('foreign projects and account mismatches are refused before any source changes',async()=>{
  const f=fixture({foreign:true});await assert.rejects(prepareOwnerAuthorization({token:'token',resources,ownerEmail:resources.ownerEmail,request:f.request}));assert.ok(!f.calls.some(x=>x.method));
  assert.throws(()=>privateAuthorizationFiles(files(),'other@example.com','S1'),/אינו שייך/);
+});
+test('password reset is installed only in an owner-only version and never added to the published clinic backend',async()=>{
+ const f=fixture();await prepareOwnerAuthorization({token:'owner-token',resources,ownerEmail:resources.ownerEmail,request:f.request,purpose:'reset'});
+ assert.deepEqual(f.head,f.original);const manifest=JSON.parse(f.versionSnapshot.find(x=>x.name==='appsscript').source);assert.deepEqual(manifest.webapp,{access:'MYSELF',executeAs:'USER_ACCESSING'});
+ const source=f.versionSnapshot.filter(x=>x.type==='SERVER_JS').map(x=>x.source).join('\n');new vm.Script(source);assert.match(source,/function resetTheraPayPassword/);
+ assert.ok(!f.original.some(x=>x.source.includes('function resetTheraPayPassword')));assert.ok(!f.calls.some(x=>x.url.includes('/deployments/BACKEND')));
+ const deployment=f.calls.find(x=>x.url.endsWith('/deployments')&&x.method==='POST');assert.equal(deployment.body.description,'TheraPay owner password reset v1');
+});
+test('owner password reset validates confirmation, changes only the access password, and does not reveal it',()=>{
+ const props={PILOT_INITIALIZED:'true',APP_ACCESS_TOKEN:'old-password-value',MORNING_API_KEY:'keep-morning-key',CLINIC_NAME:'keep-clinic'};let locked=false;
+ const ctx={PropertiesService:{getScriptProperties:()=>({getProperty:k=>props[k],setProperty:(k,v)=>props[k]=v})},LockService:{getScriptLock:()=>({tryLock:()=>{locked=true;return true;},releaseLock:()=>{locked=false;}})}};
+ vm.createContext(ctx);vm.runInContext(RESET_SERVER_SOURCE,ctx);
+ assert.throws(()=>ctx.resetTheraPayPassword('short','short'));assert.equal(props.APP_ACCESS_TOKEN,'old-password-value');
+ assert.throws(()=>ctx.resetTheraPayPassword('new-long-password-value','different'));assert.equal(props.APP_ACCESS_TOKEN,'old-password-value');
+ const result=ctx.resetTheraPayPassword('new-long-password-value','new-long-password-value');assert.equal(result.success,true);assert.ok(!JSON.stringify(result).includes('new-long-password-value'));assert.equal(props.APP_ACCESS_TOKEN,'new-long-password-value');assert.equal(props.MORNING_API_KEY,'keep-morning-key');assert.equal(props.CLINIC_NAME,'keep-clinic');assert.equal(locked,false);
+ props.PILOT_INITIALIZED='false';assert.throws(()=>ctx.resetTheraPayPassword('another-new-password','another-new-password'));assert.equal(props.APP_ACCESS_TOKEN,'new-long-password-value');assert.equal(locked,false);
+});
+test('reset form blocks duplicate submissions, clears the new password on success and restores controls after failure',()=>{
+ const ids=new Map();const el=id=>{if(!ids.has(id))ids.set(id,{value:'',hidden:false,disabled:false,listeners:{},addEventListener(t,f){this.listeners[t]=f;}});return ids.get(id);};
+ let success,failure,calls=0;
+ const runner={withSuccessHandler(fn){success=fn;return this;},withFailureHandler(fn){failure=fn;return this;},resetTheraPayPassword(p,c){calls++;assert.equal(p,c);}};
+ const ctx={document:{getElementById:el},google:{script:{run:runner}}};vm.createContext(ctx);vm.runInContext(RESET_HTML.match(/<script>([\s\S]*?)<\/script>/)[1],ctx);
+ const submit=()=>el('reset-form').listeners.submit({preventDefault(){}});
+ el('new-password').value='short';el('confirmation').value='short';submit();assert.equal(calls,0);
+ el('new-password').value=el('confirmation').value='chosen-test-passphrase';submit();submit();assert.equal(calls,1);assert.equal(el('save-password').disabled,true);
+ failure();assert.equal(el('save-password').disabled,false);submit();assert.equal(calls,2);success();assert.equal(el('new-password').value,'');assert.equal(el('confirmation').value,'');assert.equal(el('reset-form').hidden,true);assert.equal(el('success').hidden,false);
 });
