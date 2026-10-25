@@ -51,3 +51,7 @@ New accounts are guided through Google Apps Script API activation at https://scr
 
 
 New clinic passwords require 8–256 characters, an ASCII uppercase letter, a digit and a non-letter/non-number/non-whitespace special character. Validation runs in onboarding, bootstrap, and the private reset page/client and server. Existing long passwords remain valid for login. Private reset deployment uses v2; a legacy backend with the 16-character authentication guard is refused before offering an 8-character reset to prevent lockout. Already deployed private backends need an owner-authorized upgrade; publishing the frontend alone cannot change those deployments.
+
+
+### Owner-authorized password-policy upgrade
+The Google connection and forgot-password preparation now call upgradePasswordPolicy. It verifies the owner, Drive marker, bound project, deployment ID and URL, reads the deployed version (not editor HEAD), changes only recognized password length/creation rules, creates a version and updates the same deployment. Scopes, access, URL, credentials, Sheet data and invoice behavior are preserved. Unpublished HEAD changes are restored and receive only the same narrow policy patch after a verified deployment. Failure or conflicting deployment stops progress. No local/private data is sent to the distributor. Applying this to a real clinic requires the owner to sign in and authorize the existing Google connection; no live clinic was upgraded during automated tests.

@@ -7,7 +7,7 @@ import {SAMPLE_CLIENTS} from '../onboarding/demo.js';
 const source=fs.readFileSync(new URL('../onboarding/wizard.js',import.meta.url),'utf8').replace(/^import[^\n]*\n/gm,'');
 function fixture(demo=true){
  const elements=new Map();const element=id=>{if(!elements.has(id))elements.set(id,{hidden:false,disabled:false,textContent:'',innerHTML:'',elements:{},listeners:{},addEventListener(type,fn){this.listeners[type]=fn;},scrollIntoView(){}});return elements.get(id);};
- const context={...model,SAMPLE_CLIENTS,config:{},URLSearchParams,TextDecoder,Uint8Array,console,location:{search:demo?'?demo=1':'',protocol:'http:'},window:{scrollTo(){}},document:{getElementById:element,addEventListener(){}},setTimeout,clearTimeout};
+ const context={...model,SAMPLE_CLIENTS,upgradePasswordPolicy:async()=>({updated:false}),config:{},URLSearchParams,TextDecoder,Uint8Array,console,location:{search:demo?'?demo=1':'',protocol:'http:'},window:{scrollTo(){}},document:{getElementById:element,addEventListener(){}},setTimeout,clearTimeout};
  vm.createContext(context);vm.runInContext(source+'\nglobalThis.api={state,render,work,next};',context);
  return {context,api:context.api,element,run:code=>vm.runInContext(code,context)};
 }
