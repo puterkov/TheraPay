@@ -21,7 +21,7 @@ test('one Google submit both connects and advances; pending approval stays on th
 });
 test('pending owner permission opens only the private Google authorization page and verifies it before advancing',async()=>{
  const f=fixture(false);f.api.state.step=1;f.api.state.profile.email='owner@example.com';
- f.api.state.resources={scriptId:'P1',spreadsheetId:'S1',ownerEmail:'owner@example.com',backendUrl:'https://script.google.com/macros/s/BACKEND/exec',bootstrapSecret:'private',authorizationUrl:'https://script.google.com/macros/s/AUTH/exec'};
+ f.api.state.awaitingOwnerApproval=true;f.api.state.resources={scriptId:'P1',spreadsheetId:'S1',ownerEmail:'owner@example.com',backendUrl:'https://script.google.com/macros/s/BACKEND/exec',bootstrapSecret:'private',authorizationUrl:'https://script.google.com/macros/s/AUTH/exec'};
  f.api.render();assert.equal(f.element('wizard-authorization').hidden,false);assert.equal(f.element('wizard-next').hidden,true);assert.equal(f.element('wizard-authorization').href,'https://script.google.com/macros/s/AUTH/exec');
  assert.ok(!f.element('wizard-content').innerHTML.includes('/edit'));assert.ok(!f.element('wizard-content').innerHTML.includes('authorizePilot'));
  f.element('wizard-authorization').listeners.click();assert.equal(f.element('wizard-authorization').hidden,true);assert.equal(f.element('wizard-next').hidden,false);assert.equal(f.element('wizard-next').textContent,'בדיקת האישור והמשך');
@@ -53,15 +53,32 @@ test('successful Morning connection loads clients and advances automatically; a 
 });
 
 
-test('new account is guided through personal API settings before setup; opening settings alone never advances',async()=>{
+test('Google settings is a secondary link and check-and-continue remains visible without back navigation',async()=>{
  const f=fixture(false);f.api.state.step=1;f.api.state.profile.email='new@example.com';f.api.render();
- assert.equal(f.element('wizard-api-settings').hidden,false);assert.equal(f.element('wizard-next').hidden,true);
- assert.match(f.element('wizard-content').innerHTML,/Google Apps Script API/);
- assert.match(f.element('wizard-content').innerHTML,/new@example.com/);
- let calls=0;f.context.connectStub=async()=>{calls++;f.api.state.resourcesReady=true;};f.run('connectWorkspace=connectStub');
- await f.api.work(f.api.next);assert.equal(calls,0);
- f.element('wizard-api-settings').listeners.click();assert.equal(f.api.state.step,1);assert.equal(f.api.state.resourcesReady,false);
  assert.equal(f.element('wizard-api-settings').hidden,true);assert.equal(f.element('wizard-next').hidden,false);
+ assert.match(f.element('wizard-content').innerHTML,/https:\/\/script.google.com\/home\/usersettings/);
+ assert.match(f.element('wizard-content').innerHTML,/new@example.com/);
  assert.equal(f.element('wizard-next').textContent,'הפעלתי — בדיקה והמשך');
+ let calls=0;f.context.connectStub=async()=>{calls++;f.api.state.resourcesReady=true;};f.run('connectWorkspace=connectStub');
  await f.api.work(f.api.next);assert.equal(calls,1);assert.equal(f.api.state.step,2);
+});
+
+test('partial project creation and a 404 do not display Google approval instructions',async()=>{
+ const f=fixture(false);f.api.state.step=1;f.api.state.resources={scriptId:'P1',spreadsheetId:'S1'};f.api.render();
+ assert.ok(!f.element('wizard-content').innerHTML.includes('האישור הושלם'));
+ assert.equal(f.element('wizard-authorization').hidden,true);
+ f.context.probeStub=async()=>{const error=Error('Missing deployed page');error.code='HTTP_404';throw error;};f.run('probe=probeStub');
+ await assert.rejects(f.context.verifyOrPrepareAuthorization(),/Missing deployed page/);
+ assert.equal(f.api.state.awaitingOwnerApproval,false);
+});
+
+
+test('brand-new backend proceeds to probe without invoking the legacy upgrade',async()=>{
+ const f=fixture(false);f.api.state.step=1;f.api.state.profile.email='owner@example.com';
+ f.run('loadGis=async()=>{};requestGoogleAccess=async()=>"token";probe=async()=>{state.resourcesReady=true;};');
+ f.context.googleRequest=async()=>({email:'owner@example.com',email_verified:true});
+ f.context.fetch=async()=>({ok:true,text:async()=> 'source'});f.context.localStorage={getItem:()=>null};
+ f.context.provisionWorkspace=async()=>({ownerEmail:'owner@example.com',spreadsheetId:'S1',scriptId:'P1',backendUrl:'https://script.google.com/macros/s/D1/exec',bootstrapSecret:'private',createdFresh:true});
+ f.context.upgradePasswordPolicy=async()=>{throw Error('Fresh backend must not be upgraded');};
+ await f.api.work(f.api.next);assert.equal(f.api.state.step,2);assert.equal(f.element('wizard-error').hidden,true);
 });

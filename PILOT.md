@@ -58,3 +58,6 @@ The Google connection and forgot-password preparation now call upgradePasswordPo
 
 
 Remembered onboarding resources now check Drive trashed state before resuming. A confirmed trashed pilot Sheet discards only the current owner’s resource pointers, searches for any non-trashed existing pilot and otherwise provisions new resources. It never deletes or restores old files, reads their patient data, or reuses old backend credentials. Access failures, missing files and foreign markers do not automatically erase progress or create duplicate clinics. This correction affects the onboarding flow; existing direct clinic sessions are not invalidated merely by changing frontend code.
+
+
+Google settings link is now secondary inside the instruction panel, with check-and-continue always available; navigation no longer depends on a click event surviving an Android external-tab transition. Partial project creation no longer masquerades as owner consent. Script API GET 404s are retried three times with bounded delays (0.5, 1.5, 3 seconds); writes are never automatically retried. Individual deployment reads have a distinct operation label. Freshly created backends skip the legacy password migration. These changes are mock tested; the reported live-account 404 needs a user retry to confirm its cause/repair.

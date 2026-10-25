@@ -7,6 +7,7 @@ function googleOperation(path,method){
   if(hostname==='www.googleapis.com')return method==='PATCH'?'שמירת פרטי ההקמה ב־Drive':pathname.endsWith('/files')?'חיפוש הקמה קודמת ב־Drive':'בדיקת גיליון ב־Drive';
   if(hostname==='sheets.googleapis.com')return pathname.endsWith('/spreadsheets')?'יצירת גיליון פרטי':pathname.includes('batchUpdate')?'יצירת כותרות הגיליון':'קריאת כותרות הגיליון';
   if(pathname.endsWith('/content'))return method==='PUT'?'שמירת קוד הבקנד':'קריאת קוד הבקנד';
+  if(/\/deployments\/[^/]+$/.test(pathname))return method==='PUT'?'עדכון פריסת הבקנד':'בדיקת פריסת הבקנד';
   if(pathname.endsWith('/deployments'))return method==='POST'?'פריסת הבקנד':'בדיקת פריסות קיימות';
   if(pathname.endsWith('/versions'))return 'יצירת גרסת בקנד';
   return method==='POST'?'יצירת פרויקט Apps Script':'בדיקת פרויקט Apps Script';
@@ -20,10 +21,11 @@ function googleErrorCode(data){
   const fields=(data?.error?.details||[]).flatMap(d=>d.fieldViolations||[]).map(v=>String(v.field||'')).filter(v=>/^[a-zA-Z][a-zA-Z0-9_.\[\]]{0,90}$/.test(v));
   return [...new Set([...codes,...fields])].join(' · ');
 }
-export async function googleRequest(token,path,{method='GET',body,fetchImpl=fetch}={}){
+export async function googleRequest(token,path,{method='GET',body,fetchImpl=fetch,retryDelay=ms=>new Promise(resolve=>setTimeout(resolve,ms)),readAttempt=0}={}){
   let response;try{response=await fetchImpl(path,{method,headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});}catch{throw new Error(googleOperation(path,method)+': לא ניתן להגיע לשירות Google [NETWORK]. בדקו את החיבור ונסו שוב.');}
   let data;try{data=await response.json();}catch{throw new Error('Google החזיר תשובה לא תקינה');}
-  if(!response.ok){const stage=googleOperation(path,method),code=googleErrorCode(data),detail=' ['+response.status+(code?' · '+code:'')+']';if(response.status===401)throw new Error(stage+': פג תוקף ההרשאה. לחצו שוב על חיבור Google.'+detail);if(response.status===403&&new URL(path).hostname==='script.googleapis.com'){const error=new Error('Google לא אישר את הגישה ל־Apps Script. פתחו את הגדרות Google בחשבון ההקמה, ודאו שהמתג Google Apps Script API מופעל, וחזרו לבדיקה נוספת.'+detail);error.code='SCRIPT_API_PERMISSION_REQUIRED';throw error;}if(response.status===403)throw new Error(stage+': Google לא אישר את הפעולה. יש לוודא שההרשאות אושרו ושממשקי Google הופעלו בפרויקט הניסוי.'+detail);throw new Error(stage+': הפעולה ב־Google לא הושלמה'+detail+'. אפשר לנסות שוב.');}return data;
+  if(response.status===404&&method==='GET'&&new URL(path).hostname==='script.googleapis.com'&&readAttempt<3){await retryDelay([500,1500,3000][readAttempt]);return googleRequest(token,path,{method,body,fetchImpl,retryDelay,readAttempt:readAttempt+1});}
+  if(!response.ok){const stage=googleOperation(path,method),code=googleErrorCode(data),detail=' ['+response.status+(code?' · '+code:'')+']';if(response.status===401)throw new Error(stage+': פג תוקף ההרשאה. לחצו שוב על חיבור Google.'+detail);if(response.status===403&&new URL(path).hostname==='script.googleapis.com'){const error=new Error('Google לא אישר את הגישה ל־Apps Script. פתחו את הגדרות Google בחשבון ההקמה, ודאו שהמתג Google Apps Script API מופעל, וחזרו לבדיקה נוספת.'+detail);error.code='SCRIPT_API_PERMISSION_REQUIRED';throw error;}if(response.status===403)throw new Error(stage+': Google לא אישר את הפעולה. יש לוודא שההרשאות אושרו ושממשקי Google הופעלו בפרויקט הניסוי.'+detail);const error=new Error(stage+': הפעולה ב־Google לא הושלמה'+detail+'. אפשר לנסות שוב.');error.code='HTTP_'+response.status;throw error;}return data;
 }
 export function workspaceProperties(current){
   const url=String(current.backendUrl||'');
@@ -101,12 +103,12 @@ export async function provisionWorkspace({token,ownerEmail,clinicName,metadata={
     const url=deployment.entryPoints?.find(e=>e.webApp?.url)?.webApp.url;if(!url)throw new Error('Google לא החזיר כתובת Web App. נדרש לבדוק את הפריסה; לא יצרנו גיליון נוסף.');
     current.deploymentId=deployment.deploymentId;current.backendUrl=url;save();await publish();
   }
-  return {...resumableMetadata(current),bootstrapSecret:secret};
+  return {...resumableMetadata(current),bootstrapSecret:secret,createdFresh:createdScript};
 }
 export async function clinicRequest(url,action,payload={}){
   if(!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(url))throw new Error('כתובת הבקנד אינה תקינה');
   const control=new AbortController(),timeout=setTimeout(()=>control.abort(),65000);
-  try{const response=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({...payload,action}),credentials:'omit',redirect:'follow',signal:control.signal});let data;try{data=await response.json();}catch{throw new Error('הבקנד עדיין אינו זמין. יש להשלים את אישור ההרשאות בחשבון Google שלך.');}if(!response.ok||!data.success)throw new Error(data.message||'הפעולה לא הושלמה');return data;}catch(error){if(error.name==='AbortError')throw new Error('הפעולה התעכבה. אפשר לנסות שוב בלי ליצור חשבון נוסף.');if(error instanceof TypeError)throw new Error('לא ניתן להגיע לבקנד הפרטי [NETWORK]. ודאו שהפריסה מאפשרת גישה ושאישרתם את הרשאות Google.');throw error;}finally{clearTimeout(timeout);}
+  try{const response=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({...payload,action}),credentials:'omit',redirect:'follow',signal:control.signal});let data;try{data=await response.json();}catch{throw new Error('הבקנד עדיין אינו זמין. יש להשלים את אישור ההרשאות בחשבון Google שלך.');}if(!response.ok||!data.success){const error=new Error(data.message||'הפעולה לא הושלמה');error.code=!response.ok?'HTTP_'+response.status:data.code;throw error;}return data;}catch(error){if(error.name==='AbortError')throw new Error('הפעולה התעכבה. אפשר לנסות שוב בלי ליצור חשבון נוסף.');if(error instanceof TypeError)throw new Error('לא ניתן להגיע לבקנד הפרטי [NETWORK]. ודאו שהפריסה מאפשרת גישה ושאישרתם את הרשאות Google.');throw error;}finally{clearTimeout(timeout);}
 }
 export async function registerIdentity(registryUrl,profile,idToken,{fetchImpl=fetch,relay=false}={}){
  if(!relay)return clinicRequest(registryUrl,'register',{name:profile.name,idToken});
