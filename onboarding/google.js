@@ -44,6 +44,15 @@ export async function provisionWorkspace({token,ownerEmail,clinicName,metadata={
   if(metadata.ownerEmail&&metadata.ownerEmail!==ownerEmail)throw new Error('ההקמה השמורה שייכת לחשבון Google אחר. חזרו לחשבון המקורי.');
   const save=()=>checkpoint(resumableMetadata(current));
   const publish=async()=>{if(current.spreadsheetId)await request(token,'https://www.googleapis.com/drive/v3/files/'+current.spreadsheetId,{method:'PATCH',body:{appProperties:workspaceProperties(current)}});};
+  // A remembered URL must not resume a clinic whose Sheet was moved to Trash.
+  // Discard only this account's resource pointers after Google confirms Trash;
+  // authorization failures and missing files are not proof of deletion.
+  if(current.spreadsheetId){
+    progress('בודק את הגיליון של ההקמה הקודמת…');
+    const saved=await request(token,'https://www.googleapis.com/drive/v3/files/'+current.spreadsheetId+'?fields=id,trashed,appProperties');
+    if(saved.appProperties?.therapayPilot!=='v1')throw new Error('הגיליון אינו מזוהה כהקמה של TheraPay. לא שינינו קבצים.');
+    if(saved.trashed===true){Object.assign(current,{spreadsheetId:'',scriptId:'',deploymentId:'',backendUrl:''});save();progress('הגיליון הקודם נמצא באשפה. מכין הקמה חדשה…');}
+  }
   if(!current.spreadsheetId){
     progress('בודק אם כבר הוקמה קליניקה בחשבון שלך…');
     const q=encodeURIComponent("trashed = false and appProperties has { key='therapayPilot' and value='v1' }");
@@ -59,7 +68,8 @@ export async function provisionWorkspace({token,ownerEmail,clinicName,metadata={
     const sheet=await request(token,'https://sheets.googleapis.com/v4/spreadsheets',{method:'POST',body:{properties:{title:'TheraPay · '+clinicName,timeZone:'Asia/Jerusalem'},sheets:[{properties:{title:'Patients'}},{properties:{title:'Appointments'}}]}});
     current.spreadsheetId=sheet.spreadsheetId;save();await publish();
   }
-  const marker=await request(token,'https://www.googleapis.com/drive/v3/files/'+current.spreadsheetId+'?fields=id,appProperties');
+  const marker=await request(token,'https://www.googleapis.com/drive/v3/files/'+current.spreadsheetId+'?fields=id,trashed,appProperties');
+  if(marker.trashed===true)throw new Error('גיליון ההקמה הועבר לאשפה. חזרו לחיבור Google כדי להתחיל הקמה חדשה.');
   if(marker.appProperties?.therapayPilot!=='v1')throw new Error('הגיליון אינו מזוהה כהקמה של TheraPay. לא שינינו קבצים.');
   progress('מכין את טבלאות הקליניקה…');
   // Only create headers on a new, empty sheet. Never overwrite existing patient data on resume.
