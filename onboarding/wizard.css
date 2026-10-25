@@ -3,3 +3,5 @@
 .wizard-navigation #wizard-authorization{flex:1;text-align:center}
 
 .wizard-navigation #wizard-api-settings{flex:1;text-align:center}
+
+.client-pages{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:12px 0}.client-pages button{min-height:44px}
