@@ -84,10 +84,10 @@ test('brand-new backend proceeds to probe without invoking the legacy upgrade',a
 });
 
 
-test('large client list renders only forty rows while selection counts and search cover all clients',()=>{
+test('large client list renders only ten rows while selection counts and search cover all clients',()=>{
  const f=fixture();f.api.state.step=4;f.api.state.clientsLoaded=true;
  f.api.state.clients=Array.from({length:1250},(_,i)=>({id:'M'+i,name:'Client '+i,phone:'0541234567',email:'p@example.com',rate:350,selected:i===999}));
- f.api.render();assert.equal((f.element('client-picker').innerHTML.match(/<article/g)||[]).length,40);assert.match(f.element('client-picker').innerHTML,/עמוד 1 מתוך 32/);assert.equal(f.element('import-count').textContent,'מטופל אחד נבחר');
- f.api.state.clientsPage=1;f.api.render();assert.match(f.element('client-picker').innerHTML,/data-client-id="M40"/);assert.ok(!f.element('client-picker').innerHTML.includes('data-client-id="M0"'));
+ f.api.render();assert.equal((f.element('client-picker').innerHTML.match(/<article/g)||[]).length,10);assert.match(f.element('client-picker').innerHTML,/עמוד 1 מתוך 125/);assert.equal(f.element('import-count').textContent,'מטופל אחד נבחר');
+ f.api.state.clientsPage=1;f.api.render();assert.match(f.element('client-picker').innerHTML,/data-client-id="M10"/);assert.ok(!f.element('client-picker').innerHTML.includes('data-client-id="M0"'));
  f.api.state.search='Client 999';f.api.render();assert.equal((f.element('client-picker').innerHTML.match(/<article/g)||[]).length,1);assert.match(f.element('client-picker').innerHTML,/data-client-id="M999" checked/);
 });
